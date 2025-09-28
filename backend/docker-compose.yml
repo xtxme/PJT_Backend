@@ -1,0 +1,55 @@
+name: PJT
+
+services:
+  mysql:
+
+    image: mysql:8.0
+    container_name: PJT-mysql
+    restart: always
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DB}
+      MYSQL_USER: ${MYSQL_APP_USER}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${MYSQL_PORT}:${MYSQL_PORT}"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - PJT-net
+    # healthcheck:
+    #   test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 10
+
+  backend:
+    build: .
+    container_name: PJT-backend
+    # image: ${BACKEND_IMAGE_NAME}
+    ports:
+      - "${BACKEND_PORT}:${BACKEND_PORT}"
+    networks:
+      - PJT-net
+    depends_on:
+      - mysql # condition: service_healthy
+    environment:
+      MYSQL_DB: ${MYSQL_DB}
+      MYSQL_PORT: ${MYSQL_PORT}
+      MYSQL_HOST: mysql
+      MYSQL_APP_USER: ${MYSQL_APP_USER}
+      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${BACKEND_PORT}
+      DEBUG: pf-backend
+    restart: always
+    volumes:
+      - ./backend/logs:/app/logs
+
+volumes:
+  mysql-data:
+
+
+networks:
+  PJT-net:
+    driver: bridge

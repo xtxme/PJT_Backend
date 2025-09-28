@@ -1,0 +1,130 @@
+type: collection.insomnia.rest/5.0
+name: pf-backend-todo
+meta:
+  id: wrk_c501cb97cc75466ca584001a9b679b30
+  created: 1751883307231
+  modified: 1751883307231
+  description: ""
+collection:
+  - url: http://localhost:3000/todo
+    name: Create
+    meta:
+      id: req_62a6aa786173452daf823119ba48d443
+      created: 1720142917465
+      modified: 1720143029445
+      isPrivate: false
+      description: ""
+      sortKey: -1720142917466
+    method: PUT
+    body:
+      mimeType: application/json
+      text: |-
+        {
+        	"todoText": "New Todo"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/9.3.2
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://localhost:3000/todo
+    name: Query
+    meta:
+      id: req_06641d366f064088af26abb9902b56f0
+      created: 1720142933882
+      modified: 1720143015761
+      isPrivate: false
+      description: ""
+      sortKey: -1720142933882
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/9.3.2
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://localhost:3000/todo
+    name: Delete
+    meta:
+      id: req_f020c97f4f934b1bbbefa0975a03507d
+      created: 1720142974556
+      modified: 1720143059437
+      isPrivate: false
+      description: ""
+      sortKey: -1720142974556
+    method: DELETE
+    body:
+      mimeType: application/json
+      text: |-
+        {
+        	"id": "992910cd-8742-4721-8f5f-32b587abe8f0"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/9.3.2
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: http://localhost:3000/todo
+    name: Edit
+    meta:
+      id: req_a7127eec30b4474ea5a5cacadd302b83
+      created: 1720143066950
+      modified: 1751883352711
+      isPrivate: false
+      description: ""
+      sortKey: -1720143066950
+    method: PATCH
+    body:
+      mimeType: application/json
+      text: |-
+        {
+        	"id": "83612636-2209-4b64-8fd6-dbfc23c25605",
+        	"todoText": "Update 2"
+        }
+    headers:
+      - name: Content-Type
+        value: application/json
+      - name: User-Agent
+        value: insomnia/9.3.2
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_8a0f68ca5cf24e3f8ff870929541118c
+    created: 1720142886458
+    modified: 1720142886458
+environments:
+  name: Base Environment
+  meta:
+    id: env_05f5a087b7424be4aac91451abf93e3d
+    created: 1720142886453
+    modified: 1720142886453
+    isPrivate: false

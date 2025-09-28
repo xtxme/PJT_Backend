@@ -1,0 +1,1 @@
+ALTER TABLE `storestock` ADD `productid` char(36) NOT NULL;
