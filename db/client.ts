@@ -8,9 +8,9 @@
 // export const dbClient = drizzle(dbConn, { schema: schema, logger: true });
 
 import { drizzle } from "drizzle-orm/mysql2";
-import * as schema from "@db/schema.js";
+import * as schema from "db/schema.js";
 import mysql from "mysql2/promise";
-import { connectionConfig } from "@db/utils.js";
+import { connectionConfig } from "db/utils.js";
 
 export const dbConn = await mysql.createConnection(connectionConfig);
 

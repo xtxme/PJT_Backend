@@ -5,16 +5,13 @@
   ],
   "compilerOptions": {
     "outDir": "./dist",
-    "baseUrl": "./",
+    "baseUrl": ".",
     "paths": {
-      "@db/*": [
-        "./db/*"
-      ]
+      "@db/*": ["./db/*"]
     },
     "esModuleInterop": true
   },
   "include": [
-    "./*",
     "./src/**/*",
     "./db/**/*"
   ]

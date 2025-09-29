@@ -2,7 +2,6 @@ name: PJT
 
 services:
   mysql:
-
     image: mysql:8.0
     container_name: PJT-mysql
     restart: always
@@ -24,7 +23,9 @@ services:
     #   retries: 10
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: PJT-backend
     # image: ${BACKEND_IMAGE_NAME}
     ports:

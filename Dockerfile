@@ -11,23 +11,21 @@ RUN corepack enable
 # Set the working directory inside the container to /app
 WORKDIR /app
 
-# Copy all files from your project directory on your computer to the /app directory in the container
-COPY . .
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml* ./
 
-# Install dependencies using pnpm and clean up the pnpm store to reduce image size
+# Install dependencies
 RUN pnpm install && pnpm store prune
 
-# Build the application (usually compiles TypeScript, bundles assets, etc.)
+# Copy source code
+COPY . .
+
+# Build the application
 RUN npm run build
 
-# Set environment variable NODE_ENV to 'production' for best performance and security
 ENV NODE_ENV production
+ENV PORT 3100
 
-# Set environment variable PORT to 3000 (the port your app will listen on)
-ENV PORT 3000
+EXPOSE 3100
 
-# Expose port 3000 so Docker knows which port the app runs on
-EXPOSE 3000
-
-# Specify the default command to run when the container starts: start the app using npm
 CMD ["npm", "run", "start"]
