@@ -30,7 +30,8 @@
     "db:generate": "cross-env NODE_OPTIONS=\"--import tsx\" drizzle-kit generate",
     "db:push": "cross-env NODE_OPTIONS=\"--import tsx\" drizzle-kit push",
     "db:migrate": "cross-env NODE_OPTIONS=\"--import tsx\" drizzle-kit migrate",
-    "db:prototype": "tsx ./db/prototype.ts"
+    "db:prototype": "tsx ./db/prototype.ts",
+    "db:seed": "tsx ./db/seed.ts"
   },
   "dependencies": {
     "@tsconfig/node-lts": "^22.0.2",

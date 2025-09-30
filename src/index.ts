@@ -1,5 +1,6 @@
+// src/server.ts
 import "dotenv/config";
-import express, { type ErrorRequestHandler } from "express";
+import express,  { type ErrorRequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -7,7 +8,9 @@ import Debug from "debug";
 import { v4 as uuidv4 } from "uuid";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/mysql2/migrator";
-
+import session from "express-session";
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { dbClient } from "@db/client.js";
 import {
   categories,
@@ -20,6 +23,8 @@ import {
   log,
   stock_in,
 } from "@db/schema.js";
+import {request, response} from "express";
+import * as console from "node:console";
 
 const debug = Debug("pf-backend");
 const app = express();
@@ -27,8 +32,37 @@ const app = express();
 // --- Middleware ---
 app.use(morgan("dev"));
 app.use(helmet());
-app.use(cors({ origin: "*" }));
+app.use(cors({
+  origin: `${process.env.FRONTEND_DOMAIN_URL}:${process.env.FRONTEND_PORT}`,
+  credentials: true,
+}));
 app.use(express.json());
+
+// --- Session & Passport ---
+app.use(
+    session({
+      secret: process.env.SESSION_SECRET || "secret",
+      resave: false,
+      saveUninitialized: false,
+    })
+);
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.serializeUser((user:any, done) => done(null, user));
+passport.deserializeUser((user:any, done) => done(null, user));
+
+passport.use(
+    new GoogleStrategy(
+        {
+          clientID: process.env.GOOGLE_CLIENT_ID!,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+          callbackURL: process.env.GOOGLE_CALLBACK_URL!,
+        },
+        (accessToken, refreshToken, profile, done) => done(null, profile)
+    )
+);
 
 // --- Database setup ---
 async function setupDatabase() {
@@ -44,7 +78,6 @@ async function setupDatabase() {
 
 // --- Generic CRUD helper ---
 function createCRUDRoutes(query: any, table: any, route: string) {
-  // GET all
   app.get(route, async (req, res, next) => {
     try {
       const results = await query.findMany();
@@ -54,7 +87,6 @@ function createCRUDRoutes(query: any, table: any, route: string) {
     }
   });
 
-  // INSERT
   app.post(route, async (req, res, next) => {
     try {
       const data = req.body;
@@ -68,7 +100,6 @@ function createCRUDRoutes(query: any, table: any, route: string) {
     }
   });
 
-  // UPDATE
   app.patch(route, async (req, res, next) => {
     try {
       const { id, ...data } = req.body;
@@ -81,7 +112,6 @@ function createCRUDRoutes(query: any, table: any, route: string) {
     }
   });
 
-  // DELETE single
   app.delete(route, async (req, res, next) => {
     try {
       const id = req.body.id;
@@ -93,7 +123,6 @@ function createCRUDRoutes(query: any, table: any, route: string) {
     }
   });
 
-  // DELETE all
   app.delete(`${route}/all`, async (req, res, next) => {
     try {
       await dbClient.delete(table);
@@ -104,7 +133,7 @@ function createCRUDRoutes(query: any, table: any, route: string) {
   });
 }
 
-// --- Create CRUD routes for all tables ---
+// --- Create CRUD routes ---
 createCRUDRoutes(dbClient.query.categories, categories, "/categories");
 createCRUDRoutes(dbClient.query.suppliers, suppliers, "/suppliers");
 createCRUDRoutes(dbClient.query.products, products, "/products");
@@ -117,7 +146,7 @@ createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
 
 // --- Owner example ---
 app.get("/owner", (req, res) => {
-  res.json({
+   res.json({
     id: "660610757",
     name: "Natrada Nuchit",
     course_id: "269497",
@@ -125,20 +154,69 @@ app.get("/owner", (req, res) => {
   });
 });
 
+// --- Google OAuth routes ---
+app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+
+app.get(
+    "/auth/google/callback",
+    passport.authenticate("google", { failureRedirect: "/login" }),
+    async (req, res, next) => {
+        try {
+            const userEmail = (req.user as any).emails[0].value;
+
+            const dbUser:any = await dbClient.query.employee.findFirst({
+                where: eq(employee.email, userEmail),
+            });
+
+            if (!dbUser) {
+                res.redirect(
+                    `${process.env.FRONTEND_URL}/unauthorized`
+                );
+            }
+
+            res.redirect(
+                `${process.env.FRONTEND_URL}/${dbUser.role}`
+            );
+        } catch (err) {
+            next(err);
+        }
+    }
+);
+
+// --- Email/Password login route ---
+app.post("/auth/login", async (req, res, next) => {
+    try {
+        const { email, password } = req.body;
+
+        const dbUser:any = await dbClient.query.employee.findFirst({
+            where: eq(employee.email, email),
+        });
+
+        if (!dbUser || dbUser.password !== password) {
+            res.status(401).json({ error: "Invalid credentials" });
+        }
+
+         res.json({
+            redirect: `${process.env.FRONTEND_URL}/${dbUser.role}`,
+        });
+    } catch (err) {
+        next(err);
+    }
+});
+
 // --- JSON Error Middleware ---
 const jsonErrorHandler: ErrorRequestHandler = (err, req, res, next) => {
   debug(err.message);
-  const errorResponse = {
+  res.status(500).json({
     message: err.message || "Internal Server Error",
     type: err.name || "Error",
     stack: err.stack,
-  };
-  res.status(500).send(errorResponse);
+  });
 };
 app.use(jsonErrorHandler);
 
 // --- Start server ---
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.BACKEND_PORT || 5002;
 await setupDatabase();
 app.listen(PORT, () => {
   debug(`Server listening on http://localhost:${PORT}`);
