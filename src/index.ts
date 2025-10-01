@@ -12,6 +12,7 @@ import session from "express-session";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { dbClient } from "@db/client.js";
+import bcrypt from "bcrypt";
 import {
   categories,
   suppliers,
@@ -23,8 +24,6 @@ import {
   log,
   stock_in,
 } from "@db/schema.js";
-import {request, response} from "express";
-import * as console from "node:console";
 
 const debug = Debug("pf-backend");
 const app = express();
@@ -33,7 +32,7 @@ const app = express();
 app.use(morgan("dev"));
 app.use(helmet());
 app.use(cors({
-  origin: `${process.env.FRONTEND_DOMAIN_URL}:${process.env.FRONTEND_PORT}`,
+  origin: `${process.env.FRONTEND_URL}`,
   credentials: true,
 }));
 app.use(express.json());
@@ -183,20 +182,26 @@ app.get(
     }
 );
 
-// --- Email/Password login route ---
+//email+password
 app.post("/auth/login", async (req, res, next) => {
     try {
         const { email, password } = req.body;
 
-        const dbUser:any = await dbClient.query.employee.findFirst({
+        const dbUser: any = await dbClient.query.employee.findFirst({
             where: eq(employee.email, email),
         });
 
-        if (!dbUser || dbUser.password !== password) {
+        if (!dbUser) {
             res.status(401).json({ error: "Invalid credentials" });
         }
 
-         res.json({
+        // Compare hash with entered password
+        const isMatch = await bcrypt.compare(password, dbUser.password);
+        if (!isMatch) {
+            res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        res.json({
             redirect: `${process.env.FRONTEND_URL}/${dbUser.role}`,
         });
     } catch (err) {

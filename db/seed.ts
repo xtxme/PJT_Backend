@@ -1,8 +1,10 @@
 import { dbClient } from "@db/client.js";
 import { employee } from "@db/schema.js";
-import { v4 as uuidv4 } from "uuid";
+import bcrypt from "bcrypt";
 
 async function seedEmployees() {
+    const hashedPassword = await bcrypt.hash("1234", 10); // same for all demo users
+
     await dbClient.insert(employee).values([
         {
             id: 1,
@@ -13,7 +15,7 @@ async function seedEmployees() {
             tel: "0812345678",
             role: "owner",
             email: "prae.tippy@gmail.com",
-            password: "1234", // ❌ plain for testing only
+            password: hashedPassword, // ✅ hashed
         },
         {
             id: 2,
@@ -24,7 +26,7 @@ async function seedEmployees() {
             tel: "0899999999",
             role: "sale",
             email: "prts0774@gmail.com",
-            password: "1234",
+            password: hashedPassword, // ✅ hashed
         },
         {
             id: 3,
@@ -35,9 +37,10 @@ async function seedEmployees() {
             tel: "0822222222",
             role: "warehouse",
             email: "warehouse@gmail.com",
-            password: "1234",
+            password: hashedPassword, // ✅ hashed
         },
     ]);
+
     console.log("Employees seeded");
 }
 
