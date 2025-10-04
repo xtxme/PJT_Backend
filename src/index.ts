@@ -1,12 +1,12 @@
 // src/server.ts
 import "dotenv/config";
-import express,  { type ErrorRequestHandler } from "express";
+import express,  { Router, type ErrorRequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import Debug from "debug";
 import { v4 as uuidv4 } from "uuid";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import session from "express-session";
 import passport from "passport";
@@ -62,6 +62,148 @@ passport.use(
         (accessToken, refreshToken, profile, done) => done(null, profile)
     )
 );
+
+// --- Role access helpers ---
+const roleAccessSelect = {
+  id: employee.id,
+  fname: employee.fname,
+  lname: employee.lname,
+  username: employee.username,
+  email: employee.email,
+  tel: employee.tel,
+  role: employee.role,
+  status: employee.status,
+  createdAt: employee.created_at,
+  updatedAt: employee.updated_at,
+};
+
+const roleAccessRouter = Router();
+
+roleAccessRouter.get("/users", async (req, res, next) => {
+  try {
+    const users = await dbClient
+      .select(roleAccessSelect)
+      .from(employee)
+      .orderBy(desc(employee.created_at));
+
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+});
+
+roleAccessRouter.post("/users", async (req, res, next) => {
+  try {
+    const {
+      fname,
+      lname,
+      username,
+      email,
+      tel,
+      role,
+      status = "Active",
+      password,
+    } = req.body ?? {};
+
+    if (!fname || !lname || !username || !email || !role || !password) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await dbClient.insert(employee).values({
+      fname,
+      lname,
+      username,
+      email,
+      tel,
+      role,
+      status,
+      password: hashedPassword,
+    });
+
+    const [createdUser] = await dbClient
+      .select(roleAccessSelect)
+      .from(employee)
+      .where(eq(employee.email, email))
+      .limit(1);
+
+    res.status(201).json(createdUser);
+  } catch (error) {
+    next(error);
+  }
+});
+
+roleAccessRouter.patch("/users/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const numericId = Number(id);
+
+    if (!id || Number.isNaN(numericId)) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+
+    const {
+      fname,
+      lname,
+      username,
+      email,
+      tel,
+      role,
+      status,
+      password,
+    } = req.body ?? {};
+
+    const updatePayload: Record<string, unknown> = {};
+
+    if (typeof fname !== "undefined") updatePayload.fname = fname;
+    if (typeof lname !== "undefined") updatePayload.lname = lname;
+    if (typeof username !== "undefined") updatePayload.username = username;
+    if (typeof email !== "undefined") updatePayload.email = email;
+    if (typeof tel !== "undefined") updatePayload.tel = tel;
+    if (typeof role !== "undefined") updatePayload.role = role;
+    if (typeof status !== "undefined") updatePayload.status = status;
+
+    if (typeof password === "string" && password.trim().length > 0) {
+      updatePayload.password = await bcrypt.hash(password, 10);
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+      return res.status(400).json({ message: "No fields provided for update" });
+    }
+
+    await dbClient.update(employee).set(updatePayload).where(eq(employee.id, numericId));
+
+    const [updatedUser] = await dbClient
+      .select(roleAccessSelect)
+      .from(employee)
+      .where(eq(employee.id, numericId))
+      .limit(1);
+
+    res.json(updatedUser);
+  } catch (error) {
+    next(error);
+  }
+});
+
+roleAccessRouter.delete("/users/:id", async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const numericId = Number(id);
+
+    if (!id || Number.isNaN(numericId)) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+
+    await dbClient.delete(employee).where(eq(employee.id, numericId));
+
+    res.json({ success: true, id: numericId });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use("/role-access", roleAccessRouter);
 
 // --- Database setup ---
 async function setupDatabase() {
@@ -185,23 +327,27 @@ app.get(
 //email+password
 app.post("/auth/login", async (req, res, next) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body ?? {};
+
+        if (!email || !password) {
+            return res.status(400).json({ message: "Missing email or password" });
+        }
 
         const dbUser: any = await dbClient.query.employee.findFirst({
             where: eq(employee.email, email),
         });
 
         if (!dbUser) {
-            res.status(401).json({ error: "Invalid credentials" });
+            return res.status(401).json({ message: "Invalid credentials" });
         }
 
         // Compare hash with entered password
-        const isMatch = await bcrypt.compare(password, dbUser.password);
+        const isMatch = await bcrypt.compare(password, dbUser.password ?? "");
         if (!isMatch) {
-            res.status(401).json({ error: "Invalid credentials" });
+            return res.status(401).json({ message: "Invalid credentials" });
         }
 
-        res.json({
+        return res.json({
             redirect: `${process.env.FRONTEND_URL}/${dbUser.role}`,
         });
     } catch (err) {
@@ -226,3 +372,5 @@ await setupDatabase();
 app.listen(PORT, () => {
   debug(`Server listening on http://localhost:${PORT}`);
 });
+
+// --- ของผมเอง Owner ---
