@@ -31,10 +31,31 @@ const app = express();
 // --- Middleware ---
 app.use(morgan("dev"));
 app.use(helmet());
-app.use(cors({
-  origin: `${process.env.FRONTEND_URL}`,
-  credentials: true,
-}));
+const frontendOriginEnv = process.env.FRONTEND_URL;
+
+if (!frontendOriginEnv) {
+  throw new Error("FRONTEND_URL environment variable is required for CORS configuration");
+}
+
+const allowedOrigins = Array.from(
+  new Set(
+    frontendOriginEnv
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  )
+);
+
+if (allowedOrigins.length === 0) {
+  throw new Error("FRONTEND_URL must contain at least one origin");
+}
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // --- Session & Passport ---
@@ -106,7 +127,8 @@ roleAccessRouter.post("/users", async (req, res, next) => {
     } = req.body ?? {};
 
     if (!fname || !lname || !username || !email || !role || !password) {
-      return res.status(400).json({ message: "Missing required fields" });
+      res.status(400).json({ message: "Missing required fields" });
+      return;
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -140,7 +162,8 @@ roleAccessRouter.patch("/users/:id", async (req, res, next) => {
     const numericId = Number(id);
 
     if (!id || Number.isNaN(numericId)) {
-      return res.status(400).json({ message: "Invalid user id" });
+      res.status(400).json({ message: "Invalid user id" });
+      return;
     }
 
     const {
@@ -169,7 +192,8 @@ roleAccessRouter.patch("/users/:id", async (req, res, next) => {
     }
 
     if (Object.keys(updatePayload).length === 0) {
-      return res.status(400).json({ message: "No fields provided for update" });
+      res.status(400).json({ message: "No fields provided for update" });
+      return;
     }
 
     await dbClient.update(employee).set(updatePayload).where(eq(employee.id, numericId));
@@ -192,7 +216,8 @@ roleAccessRouter.delete("/users/:id", async (req, res, next) => {
     const numericId = Number(id);
 
     if (!id || Number.isNaN(numericId)) {
-      return res.status(400).json({ message: "Invalid user id" });
+      res.status(400).json({ message: "Invalid user id" });
+      return;
     }
 
     await dbClient.delete(employee).where(eq(employee.id, numericId));
@@ -330,7 +355,8 @@ app.post("/auth/login", async (req, res, next) => {
         const { email, password } = req.body ?? {};
 
         if (!email || !password) {
-            return res.status(400).json({ message: "Missing email or password" });
+            res.status(400).json({ message: "Missing email or password" });
+            return;
         }
 
         const dbUser: any = await dbClient.query.employee.findFirst({
@@ -338,16 +364,18 @@ app.post("/auth/login", async (req, res, next) => {
         });
 
         if (!dbUser) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            res.status(401).json({ message: "Invalid credentials" });
+            return;
         }
 
         // Compare hash with entered password
         const isMatch = await bcrypt.compare(password, dbUser.password ?? "");
         if (!isMatch) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            res.status(401).json({ message: "Invalid credentials" });
+            return;
         }
 
-        return res.json({
+        res.json({
             redirect: `${process.env.FRONTEND_URL}/${dbUser.role}`,
         });
     } catch (err) {
