@@ -329,6 +329,7 @@ app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
     const [result] = await dbClient
       .select({
@@ -342,9 +343,32 @@ app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
         )
       );
 
-    const total = result?.total ?? 0;
+    const [previousResult] = await dbClient
+      .select({
+        total: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.order_date, startOfPreviousMonth),
+          lt(orders.order_date, startOfMonth)
+        )
+      );
 
-    res.json({ currentMonthTotal: Number(total) });
+    const currentMonthTotal = Number(result?.total ?? 0);
+    const previousMonthTotal = Number(previousResult?.total ?? 0);
+    const percentChange =
+      previousMonthTotal === 0
+        ? currentMonthTotal > 0
+          ? 100
+          : 0
+        : ((currentMonthTotal - previousMonthTotal) / Math.abs(previousMonthTotal)) * 100;
+
+    res.json({
+      currentMonthTotal,
+      previousMonthTotal,
+      percentChange,
+    });
   } catch (error) {
     next(error);
   }
