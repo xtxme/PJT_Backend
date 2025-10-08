@@ -6,7 +6,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import Debug from "debug";
 import { v4 as uuidv4 } from "uuid";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import session from "express-session";
 import passport from "passport";
@@ -322,6 +322,33 @@ createCRUDRoutes(dbClient.query.orders, orders, "/orders");
 createCRUDRoutes(dbClient.query.order_items, order_items, "/order_items");
 createCRUDRoutes(dbClient.query.log, log, "/log");
 createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
+
+// --- Analytics ---
+app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const [result] = await dbClient
+      .select({
+        total: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.order_date, startOfMonth),
+          lt(orders.order_date, startOfNextMonth)
+        )
+      );
+
+    const total = result?.total ?? 0;
+
+    res.json({ currentMonthTotal: Number(total) });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // --- Owner example ---
 app.get("/owner", (req, res) => {
