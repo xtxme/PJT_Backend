@@ -70,7 +70,7 @@ export const employee = mysqlTable("employee", {
 // orders
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
-  sale_id: int("sale_id"),
+  sale_id: int("sale_id").references(() => employee.id),
   order_number: varchar("order_number", { length: 100 }),
   customer_id: int("customer_id").notNull(),
   order_date: timestamp("order_date").defaultNow(),

@@ -1,6 +1,7 @@
 import { dbClient } from "@db/client.js";
-import { employee } from "@db/schema.js";
 import bcrypt from "bcrypt";
+import { employee } from "@db/schema.js";
+import { orders } from "@db/schema.js";
 import { products } from "@db/schema.js";
 
 async function seedEmployees() {
@@ -124,9 +125,82 @@ async function seedProducts() {
     console.log("Products seeded");
 }
 
+async function seedOrders() {
+    await dbClient.insert(orders).values([
+        {
+            id: 1,
+            sale_id: 2,
+            order_number: "ORD-2025001",
+            customer_id: 1,
+            order_date: new Date("2025-01-10T09:15:00Z"),
+            total_amount: "1540.00",
+            status: "completed",
+            note: "First wholesale order of the year.",
+            bill: "https://example.com/bills/ORD-2025001.pdf",
+            created_at: new Date("2025-01-10T09:20:00Z"),
+            updated_at: new Date("2025-01-10T09:20:00Z"),
+        },
+        {
+            id: 2,
+            sale_id: 2,
+            order_number: "ORD-2025002",
+            customer_id: 2,
+            order_date: new Date("2025-01-12T14:05:00Z"),
+            total_amount: "875.50",
+            status: "processing",
+            note: "Customer requested split shipment.",
+            bill: "https://example.com/bills/ORD-2025002.pdf",
+            created_at: new Date("2025-01-12T14:10:00Z"),
+            updated_at: new Date("2025-01-13T08:00:00Z"),
+        },
+        {
+            id: 3,
+            sale_id: 7,
+            order_number: "ORD-2025003",
+            customer_id: 3,
+            order_date: new Date("2025-01-15T11:30:00Z"),
+            total_amount: "2340.75",
+            status: "completed",
+            note: "Includes promotional discount applied manually.",
+            bill: "https://example.com/bills/ORD-2025003.pdf",
+            created_at: new Date("2025-01-15T11:40:00Z"),
+            updated_at: new Date("2025-01-15T11:40:00Z"),
+        },
+        {
+            id: 4,
+            sale_id: 7,
+            order_number: "ORD-2025004",
+            customer_id: 4,
+            order_date: new Date("2025-01-18T16:45:00Z"),
+            total_amount: "460.00",
+            status: "pending",
+            note: "Awaiting payment confirmation.",
+            bill: "https://example.com/bills/ORD-2025004.pdf",
+            created_at: new Date("2025-01-18T16:50:00Z"),
+            updated_at: new Date("2025-01-18T16:50:00Z"),
+        },
+        {
+            id: 5,
+            sale_id: 7,
+            order_number: "ORD-2025005",
+            customer_id: 5,
+            order_date: new Date("2025-01-20T08:25:00Z"),
+            total_amount: "1280.40",
+            status: "cancelled",
+            note: "Cancelled due to out-of-stock items.",
+            bill: "https://example.com/bills/ORD-2025005.pdf",
+            created_at: new Date("2025-01-20T08:30:00Z"),
+            updated_at: new Date("2025-01-21T09:00:00Z"),
+        },
+    ]);
+
+    console.log("Orders seeded");
+}
+
 async function runSeed() {
     await seedEmployees();
     await seedProducts();
+    await seedOrders();
 }
 
 runSeed()
