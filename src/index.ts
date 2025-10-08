@@ -32,27 +32,30 @@ const app = express();
 app.use(morgan("dev"));
 app.use(helmet());
 const frontendOriginEnv = process.env.FRONTEND_URL;
+const allowedOrigins = frontendOriginEnv
+  ? Array.from(
+      new Set(
+        frontendOriginEnv
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      )
+    )
+  : [];
 
-if (!frontendOriginEnv) {
-  throw new Error("FRONTEND_URL environment variable is required for CORS configuration");
+let corsOrigin: boolean | string | RegExp | (string | RegExp)[] = true;
+
+if (allowedOrigins.length > 0) {
+  corsOrigin = allowedOrigins;
+} else {
+  debug("FRONTEND_URL not configured; falling back to permissive CORS for development");
 }
 
-const allowedOrigins = Array.from(
-  new Set(
-    frontendOriginEnv
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  )
-);
-
-if (allowedOrigins.length === 0) {
-  throw new Error("FRONTEND_URL must contain at least one origin");
-}
+const primaryFrontendUrl = allowedOrigins[0];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: corsOrigin,
     credentials: true,
   })
 );
@@ -73,16 +76,26 @@ app.use(passport.session());
 passport.serializeUser((user:any, done) => done(null, user));
 passport.deserializeUser((user:any, done) => done(null, user));
 
-passport.use(
+const googleClientID = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL;
+const isGoogleOAuthConfigured =
+  Boolean(googleClientID) && Boolean(googleClientSecret) && Boolean(googleCallbackURL);
+
+if (isGoogleOAuthConfigured) {
+  passport.use(
     new GoogleStrategy(
-        {
-          clientID: process.env.GOOGLE_CLIENT_ID!,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          callbackURL: process.env.GOOGLE_CALLBACK_URL!,
-        },
-        (accessToken, refreshToken, profile, done) => done(null, profile)
+      {
+        clientID: googleClientID!,
+        clientSecret: googleClientSecret!,
+        callbackURL: googleCallbackURL!,
+      },
+      (accessToken, refreshToken, profile, done) => done(null, profile)
     )
-);
+  );
+} else {
+  debug("Skipping Google OAuth setup; missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_CALLBACK_URL");
+}
 
 // --- Role access helpers ---
 const roleAccessSelect = {
@@ -321,33 +334,47 @@ app.get("/owner", (req, res) => {
 });
 
 // --- Google OAuth routes ---
-app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+if (isGoogleOAuthConfigured) {
+  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
-app.get(
+  app.get(
     "/auth/google/callback",
     passport.authenticate("google", { failureRedirect: "/login" }),
     async (req, res, next) => {
-        try {
-            const userEmail = (req.user as any).emails[0].value;
+      try {
+        const userEmail = (req.user as any).emails[0].value;
+        const dbUser: any = await dbClient.query.employee.findFirst({
+          where: eq(employee.email, userEmail),
+        });
 
-            const dbUser:any = await dbClient.query.employee.findFirst({
-                where: eq(employee.email, userEmail),
-            });
-
-            if (!dbUser) {
-                res.redirect(
-                    `${process.env.FRONTEND_URL}/unauthorized`
-                );
-            }
-
-            res.redirect(
-                `${process.env.FRONTEND_URL}/${dbUser.role}`
-            );
-        } catch (err) {
-            next(err);
+        if (!dbUser) {
+          if (primaryFrontendUrl) {
+            res.redirect(`${primaryFrontendUrl}/unauthorized`);
+          } else {
+            res.status(403).json({ message: "Unauthorized" });
+          }
+          return;
         }
+
+        if (primaryFrontendUrl) {
+          res.redirect(`${primaryFrontendUrl}/${dbUser.role}`);
+        } else {
+          res.json({ message: "Login successful", role: dbUser.role });
+        }
+      } catch (err) {
+        next(err);
+      }
     }
-);
+  );
+} else {
+  app.get("/auth/google", (_req, res) => {
+    res.status(503).json({ message: "Google OAuth is not configured on this server" });
+  });
+
+  app.get("/auth/google/callback", (_req, res) => {
+    res.status(503).json({ message: "Google OAuth is not configured on this server" });
+  });
+}
 
 //email+password
 app.post("/auth/login", async (req, res, next) => {
@@ -375,9 +402,14 @@ app.post("/auth/login", async (req, res, next) => {
             return;
         }
 
-        res.json({
-            redirect: `${process.env.FRONTEND_URL}/${dbUser.role}`,
-        });
+        if (primaryFrontendUrl) {
+          res.json({
+            redirect: `${primaryFrontendUrl}/${dbUser.role}`,
+          });
+          return;
+        }
+
+        res.json({ message: "Login successful", role: dbUser.role });
     } catch (err) {
         next(err);
     }
