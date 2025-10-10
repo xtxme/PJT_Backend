@@ -324,7 +324,7 @@ createCRUDRoutes(dbClient.query.log, log, "/log");
 createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
 
 // --- Analytics ---
-const completedOrderStatuses = ["completed", "paid"] as const;
+const completedOrderStatuses = ["completed", "paid", "shipped"] as const;
 
 type MonthRange = {
   start: Date;
@@ -402,6 +402,69 @@ app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
       currentMonthTotal,
       previousMonthTotal,
       percentChange,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/sales/by-employee", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const monthKey = `${startOfMonth.getFullYear()}-${String(startOfMonth.getMonth() + 1).padStart(2, "0")}`;
+
+    const currentSales = await dbClient
+      .select({
+        employeeId: employee.id,
+        fname: employee.fname,
+        lname: employee.lname,
+        totalSales: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(employee)
+      .leftJoin(
+        orders,
+        and(
+          eq(orders.sale_id, employee.id),
+          gte(orders.order_date, startOfMonth),
+          lt(orders.order_date, startOfNextMonth),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(employee.id, employee.fname, employee.lname);
+
+    const aggregatedRows = currentSales.map((row) => {
+      const totalSales = Number(row.totalSales ?? 0);
+
+      const nameParts = [row.fname, row.lname].filter(Boolean);
+
+      return {
+        employeeId: row.employeeId,
+        name: nameParts.length > 0 ? nameParts.join(" ").trim() : "ไม่ระบุชื่อ",
+        totalSales,
+      };
+    });
+
+    const sortedRows = aggregatedRows.sort((a, b) => b.totalSales - a.totalSales);
+    const leaderTotal = sortedRows[0]?.totalSales ?? 0;
+
+    const rows = sortedRows.map((row, index) => {
+      const nextRow = sortedRows[index + 1];
+      return {
+        rank: index + 1,
+        employeeId: row.employeeId,
+        name: row.name,
+        totalSales: row.totalSales,
+        gapToLeader: leaderTotal - row.totalSales,
+        gapToNext: nextRow ? row.totalSales - nextRow.totalSales : null,
+      };
+    });
+
+    res.json({
+      month: monthKey,
+      rows,
     });
   } catch (error) {
     next(error);
