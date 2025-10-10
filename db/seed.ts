@@ -1,13 +1,14 @@
 import { dbClient } from "@db/client.js";
 import bcrypt from "bcrypt";
-import { employee } from "@db/schema.js";
-import { orders } from "@db/schema.js";
-import { products } from "@db/schema.js";
+import { and, eq, inArray } from "drizzle-orm";
+import { employee, order_items, orders, products } from "@db/schema.js";
+
+type OrderItemInsert = typeof order_items.$inferInsert;
 
 async function seedEmployees() {
     const hashedPassword = await bcrypt.hash("1234", 10); // same for all demo users
 
-    await dbClient.insert(employee).values([
+    const employeesToSeed = [
         {
             fname: "Owner",
             lname: "User",
@@ -16,7 +17,6 @@ async function seedEmployees() {
             tel: "0812345678",
             role: "owner",
             email: "prae.tippy@gmail.com",
-            password: hashedPassword, // ✅ hashed
         },
         {
             fname: "Sale",
@@ -26,7 +26,6 @@ async function seedEmployees() {
             tel: "0899999999",
             role: "sale",
             email: "prts0774@gmail.com",
-            password: hashedPassword, // ✅ hashed
         },
         {
             fname: "Warehouse",
@@ -36,15 +35,33 @@ async function seedEmployees() {
             tel: "0822222222",
             role: "warehouse",
             email: "warehouse@gmail.com",
-            password: hashedPassword, // ✅ hashed
         },
-    ]);
+    ];
 
-    console.log("Employees seeded");
+    let inserted = 0;
+
+    for (const employeeData of employeesToSeed) {
+        const existing = await dbClient.query.employee.findFirst({
+            where: eq(employee.username, employeeData.username),
+        });
+
+        if (existing) {
+            continue;
+        }
+
+        await dbClient.insert(employee).values({
+            ...employeeData,
+            password: hashedPassword, // ✅ hashed
+        });
+
+        inserted += 1;
+    }
+
+    console.log(`Employees seeded (${inserted} new)`);
 }
 
 async function seedProducts() {
-    await dbClient.insert(products).values([
+    const productsToSeed = [
         {
             image: "https://example.com/images/arabica-beans.jpg",
             name: "Arabica Coffee Beans 1kg",
@@ -120,13 +137,28 @@ async function seedProducts() {
             created_at: new Date(),
             updated_at: new Date(),
         },
-    ]);
+    ];
 
-    console.log("Products seeded");
+    let inserted = 0;
+
+    for (const product of productsToSeed) {
+        const existing = await dbClient.query.products.findFirst({
+            where: eq(products.name, product.name),
+        });
+
+        if (existing) {
+            continue;
+        }
+
+        await dbClient.insert(products).values(product);
+        inserted += 1;
+    }
+
+    console.log(`Products seeded (${inserted} new)`);
 }
 
 async function seedOrders() {
-    await dbClient.insert(orders).values([
+    const ordersToSeed = [
         {
             sale_id: 2,
             order_number: "ORD-2025001",
@@ -307,15 +339,183 @@ async function seedOrders() {
             created_at: new Date("2025-10-20T19:15:00Z"),
             updated_at: new Date("2025-10-21T08:00:00Z"),
         },
-    ]);
+    ];
 
-    console.log("Orders seeded");
+    let inserted = 0;
+
+    for (const order of ordersToSeed) {
+        const existing = await dbClient.query.orders.findFirst({
+            where: eq(orders.order_number, order.order_number),
+        });
+
+        if (existing) {
+            continue;
+        }
+
+        await dbClient.insert(orders).values(order);
+        inserted += 1;
+    }
+
+    console.log(`Orders seeded (${inserted} new)`);
+}
+
+async function seedOrderItems() {
+    const wantedOrderNumbers = ["ORD-2025001", "ORD-20250904", "ORD-20251001"];
+
+    const ordersResult = await dbClient
+        .select({
+            id: orders.id,
+            order_number: orders.order_number,
+            total_amount: orders.total_amount,
+        })
+        .from(orders)
+        .where(inArray(orders.order_number, wantedOrderNumbers));
+
+    const orderIdByNumber = Object.fromEntries(
+        ordersResult.map((order) => [order.order_number!, order.id]),
+    );
+
+    const missingOrders = wantedOrderNumbers.filter((orderNo) => !orderIdByNumber[orderNo]);
+    if (missingOrders.length > 0) {
+        throw new Error(`Missing orders for seeding order items: ${missingOrders.join(", ")}`);
+    }
+
+    const neededProductNames = [
+        "Arabica Coffee Beans 1kg",
+        "Cold Brew Concentrate 500ml",
+        "Barista Oat Milk 1L",
+        "Caramel Syrup 750ml",
+        "Porcelain Espresso Cups (Set of 4)",
+    ];
+
+    const productsResult = await dbClient
+        .select({
+            id: products.id,
+            name: products.name,
+            sell: products.sell,
+        })
+        .from(products)
+        .where(inArray(products.name, neededProductNames));
+
+    const productIdByName = Object.fromEntries(
+        productsResult.map((product) => [product.name!, product.id]),
+    );
+    const productPriceByName = Object.fromEntries(
+        productsResult.map((product) => [product.name!, Number(product.sell ?? 0)]),
+    );
+
+    const missingProducts = neededProductNames.filter((productName) => !productIdByName[productName]);
+    if (missingProducts.length > 0) {
+        throw new Error(`Missing products for seeding order items: ${missingProducts.join(", ")}`);
+    }
+
+    const formatMoney = (value: number) => value.toFixed(2);
+
+    const itemDefinitions = [
+        { orderNumber: "ORD-2025001", productName: "Arabica Coffee Beans 1kg", quantity: 1 },
+        { orderNumber: "ORD-2025001", productName: "Cold Brew Concentrate 500ml", quantity: 1 },
+        { orderNumber: "ORD-2025001", productName: "Caramel Syrup 750ml", quantity: 1 },
+        {
+            orderNumber: "ORD-2025001",
+            productName: "Porcelain Espresso Cups (Set of 4)",
+            quantity: 1,
+        },
+        { orderNumber: "ORD-20250904", productName: "Caramel Syrup 750ml", quantity: 5 },
+        { orderNumber: "ORD-20250904", productName: "Caramel Syrup 750ml", quantity: 5 },
+        { orderNumber: "ORD-20251001", productName: "Cold Brew Concentrate 500ml", quantity: 3 },
+        {
+            orderNumber: "ORD-20251001",
+            productName: "Porcelain Espresso Cups (Set of 4)",
+            quantity: 1,
+        },
+        { orderNumber: "ORD-20251001", productName: "Caramel Syrup 750ml", quantity: 1 },
+        { orderNumber: "ORD-20251001", productName: "Barista Oat Milk 1L", quantity: 1 },
+    ];
+
+    const orderItemsToSeed: OrderItemInsert[] = itemDefinitions.map(
+        ({ orderNumber, productName, quantity }) => {
+            const orderId = orderIdByNumber[orderNumber];
+            const productId = productIdByName[productName];
+            const unitPrice = productPriceByName[productName];
+
+            if (orderId == null || productId == null || unitPrice == null) {
+                throw new Error(
+                    `Unable to resolve identifiers or price for order ${orderNumber} and product ${productName}`,
+                );
+            }
+
+            const totalPrice = unitPrice * quantity;
+
+            return {
+                order_id: orderId,
+                product_id: productId,
+                quantity,
+                unit_price: formatMoney(unitPrice),
+                total_price: formatMoney(totalPrice),
+            };
+        },
+    );
+
+    const grouped = new Map<string, { row: OrderItemInsert; desiredCount: number }>();
+
+    for (const row of orderItemsToSeed) {
+        const key = `${row.order_id}|${row.product_id}|${row.quantity}|${row.unit_price}|${row.total_price}`;
+        const existingEntry = grouped.get(key);
+
+        if (existingEntry) {
+            existingEntry.desiredCount += 1;
+        } else {
+            grouped.set(key, { row, desiredCount: 1 });
+        }
+    }
+
+    let inserted = 0;
+
+    for (const { row, desiredCount } of grouped.values()) {
+        const { order_id, product_id, quantity, unit_price, total_price } = row;
+
+        if (
+            order_id == null ||
+            product_id == null ||
+            quantity == null ||
+            unit_price == null ||
+            total_price == null
+        ) {
+            throw new Error(
+                `Seed order item missing required values (orderId=${order_id}, productId=${product_id})`,
+            );
+        }
+
+        const existing = await dbClient.query.order_items.findMany({
+            where: and(
+                eq(order_items.order_id, order_id),
+                eq(order_items.product_id, product_id),
+                eq(order_items.quantity, quantity),
+                eq(order_items.unit_price, unit_price),
+                eq(order_items.total_price, total_price),
+            ),
+        });
+
+        const missingCount = desiredCount - existing.length;
+
+        if (missingCount <= 0) {
+            continue;
+        }
+
+        const valuesToInsert = Array.from({ length: missingCount }, () => ({ ...row }));
+
+        await dbClient.insert(order_items).values(valuesToInsert);
+        inserted += missingCount;
+    }
+
+    console.log(`Order items seeded (${inserted} new)`);
 }
 
 async function runSeed() {
     await seedEmployees();
     await seedProducts();
     await seedOrders();
+    await seedOrderItems();
 }
 
 runSeed()

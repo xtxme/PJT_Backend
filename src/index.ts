@@ -6,7 +6,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import Debug from "debug";
 import { v4 as uuidv4 } from "uuid";
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import session from "express-session";
 import passport from "passport";
@@ -324,6 +324,40 @@ createCRUDRoutes(dbClient.query.log, log, "/log");
 createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
 
 // --- Analytics ---
+const completedOrderStatuses = ["completed", "paid"] as const;
+
+type MonthRange = {
+  start: Date;
+  end: Date;
+};
+
+async function getMonthlyNetProfit({ start, end }: MonthRange) {
+  const [result] = await dbClient
+    .select({
+      revenue: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${order_items.unit_price}, 0)), 0)`,
+      cost: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
+    })
+    .from(order_items)
+    .innerJoin(orders, eq(order_items.order_id, orders.id))
+    .innerJoin(products, eq(order_items.product_id, products.id))
+    .where(
+      and(
+        gte(orders.order_date, start),
+        lt(orders.order_date, end),
+        inArray(orders.status, completedOrderStatuses)
+      )
+    );
+
+  const revenue = Number(result?.revenue ?? 0);
+  const cost = Number(result?.cost ?? 0);
+
+  return {
+    revenue,
+    cost,
+    netProfit: revenue - cost,
+  };
+}
+
 app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -369,6 +403,47 @@ app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
       previousMonthTotal,
       percentChange,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/profit/monthly-total", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const currentMonthNet = await getMonthlyNetProfit({
+      start: startOfMonth,
+      end: startOfNextMonth,
+    });
+
+    const previousMonthNet = await getMonthlyNetProfit({
+      start: startOfPreviousMonth,
+      end: startOfMonth,
+    });
+
+    const currentNetProfit = currentMonthNet.netProfit;
+    const previousNetProfit = previousMonthNet.netProfit;
+
+    const percentChange =
+      previousNetProfit === 0
+        ? currentNetProfit === 0
+          ? 0
+          : currentNetProfit > 0
+            ? 100
+            : -100
+        : ((currentNetProfit - previousNetProfit) / Math.abs(previousNetProfit)) * 100;
+
+    res.json(
+      {
+        currentMonthNetProfit: currentNetProfit,
+        previousMonthNetProfit: previousNetProfit,
+        percentChange,
+      }
+    );
   } catch (error) {
     next(error);
   }
