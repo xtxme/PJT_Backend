@@ -85,7 +85,7 @@ export const orders = mysqlTable("orders", {
 // order_items
 export const order_items = mysqlTable("order_items", {
   id: int("id").autoincrement().primaryKey(),
-  order_id: int("order_id").notNull(),
+  order_id: int("order_id").notNull().references(() => orders.id),
   product_id: int("product_id").notNull(),
   quantity: int("quantity"),
   unit_price: decimal("unit_price", { precision: 10, scale: 2 }),
