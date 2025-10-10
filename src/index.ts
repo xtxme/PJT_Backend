@@ -358,6 +358,61 @@ async function getMonthlyNetProfit({ start, end }: MonthRange) {
   };
 }
 
+const formatMonthKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
+app.get("/analytics/sales/monthly-summary", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const totals = await dbClient
+      .select({
+        year: sql<number>`YEAR(${orders.order_date})`,
+        month: sql<number>`MONTH(${orders.order_date})`,
+        totalSales: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.order_date, start),
+          lt(orders.order_date, end),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(sql`YEAR(${orders.order_date})`, sql`MONTH(${orders.order_date})`)
+      .orderBy(sql`YEAR(${orders.order_date})`, sql`MONTH(${orders.order_date})`);
+
+    const totalsByMonth = new Map<string, number>();
+
+    for (const row of totals) {
+      const year = Number(row.year);
+      const month = Number(row.month);
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      totalsByMonth.set(key, Number(row.totalSales ?? 0));
+    }
+
+    const months: Array<{ month: string; totalSales: number }> = [];
+
+    for (let offset = 0; offset < 12; offset += 1) {
+      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
+      const key = formatMonthKey(current);
+      months.push({
+        month: key,
+        totalSales: totalsByMonth.get(key) ?? 0,
+      });
+    }
+
+    res.json({ months });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
