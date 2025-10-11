@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes.js";
 import crudRoutes from "./crud.routes.js";
+import userRoutes from "./user.routes.js";
 import saleRoutes from "../controllers/sale.controller.js";
 import ownerRoutes from "../controllers/owner.controller.js";
 import warehouseRoutes from "../controllers/warehouse.controller.js";
@@ -23,5 +24,5 @@ router.use(crudRoutes);
 router.use("/owner", ownerRoutes);
 router.use("/sale", saleRoutes);
 router.use("/warehouse", warehouseRoutes);
-
+router.use("/role-access", userRoutes);
 export default router;
