@@ -1,6 +1,9 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes.js";
 import crudRoutes from "./crud.routes.js";
+import saleRoutes from "../controllers/sale.controller.js";
+import ownerRoutes from "../controllers/owner.controller.js";
+import warehouseRoutes from "../controllers/warehouse.controller.js";
 
 const router = Router();
 
@@ -17,5 +20,8 @@ router.get("/owner", (_req, res) => {
 // auth + crud
 router.use(authRoutes);
 router.use(crudRoutes);
+router.use("/owner", ownerRoutes);
+router.use("/sale", saleRoutes);
+router.use("/warehouse", warehouseRoutes);
 
 export default router;
