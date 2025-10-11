@@ -6,7 +6,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import Debug from "debug";
 import { v4 as uuidv4 } from "uuid";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/mysql2/migrator";
 import session from "express-session";
 import passport from "passport";
@@ -32,27 +32,30 @@ const app = express();
 app.use(morgan("dev"));
 app.use(helmet());
 const frontendOriginEnv = process.env.FRONTEND_URL;
+const allowedOrigins = frontendOriginEnv
+  ? Array.from(
+      new Set(
+        frontendOriginEnv
+          .split(",")
+          .map((origin) => origin.trim())
+          .filter(Boolean)
+      )
+    )
+  : [];
 
-if (!frontendOriginEnv) {
-  throw new Error("FRONTEND_URL environment variable is required for CORS configuration");
+let corsOrigin: boolean | string | RegExp | (string | RegExp)[] = true;
+
+if (allowedOrigins.length > 0) {
+  corsOrigin = allowedOrigins;
+} else {
+  debug("FRONTEND_URL not configured; falling back to permissive CORS for development");
 }
 
-const allowedOrigins = Array.from(
-  new Set(
-    frontendOriginEnv
-      .split(",")
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  )
-);
-
-if (allowedOrigins.length === 0) {
-  throw new Error("FRONTEND_URL must contain at least one origin");
-}
+const primaryFrontendUrl = allowedOrigins[0];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: corsOrigin,
     credentials: true,
   })
 );
@@ -73,16 +76,26 @@ app.use(passport.session());
 passport.serializeUser((user:any, done) => done(null, user));
 passport.deserializeUser((user:any, done) => done(null, user));
 
-passport.use(
+const googleClientID = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL;
+const isGoogleOAuthConfigured =
+  Boolean(googleClientID) && Boolean(googleClientSecret) && Boolean(googleCallbackURL);
+
+if (isGoogleOAuthConfigured) {
+  passport.use(
     new GoogleStrategy(
-        {
-          clientID: process.env.GOOGLE_CLIENT_ID!,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          callbackURL: process.env.GOOGLE_CALLBACK_URL!,
-        },
-        (accessToken, refreshToken, profile, done) => done(null, profile)
+      {
+        clientID: googleClientID!,
+        clientSecret: googleClientSecret!,
+        callbackURL: googleCallbackURL!,
+      },
+      (accessToken, refreshToken, profile, done) => done(null, profile)
     )
-);
+  );
+} else {
+  debug("Skipping Google OAuth setup; missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_CALLBACK_URL");
+}
 
 // --- Role access helpers ---
 const roleAccessSelect = {
@@ -310,6 +323,319 @@ createCRUDRoutes(dbClient.query.order_items, order_items, "/order_items");
 createCRUDRoutes(dbClient.query.log, log, "/log");
 createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
 
+// --- Analytics ---
+const completedOrderStatuses = ["completed", "paid", "shipped"] as const;
+const receivedStockInStatuses = ["received", "completed"] as const;
+
+type MonthRange = {
+  start: Date;
+  end: Date;
+};
+
+async function getMonthlyNetProfit({ start, end }: MonthRange) {
+  const [result] = await dbClient
+    .select({
+      revenue: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${order_items.unit_price}, 0)), 0)`,
+      cost: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
+    })
+    .from(order_items)
+    .innerJoin(orders, eq(order_items.order_id, orders.id))
+    .innerJoin(products, eq(order_items.product_id, products.id))
+    .where(
+      and(
+        gte(orders.order_date, start),
+        lt(orders.order_date, end),
+        inArray(orders.status, completedOrderStatuses)
+      )
+    );
+
+  const revenue = Number(result?.revenue ?? 0);
+  const cost = Number(result?.cost ?? 0);
+
+  return {
+    revenue,
+    cost,
+    netProfit: revenue - cost,
+  };
+}
+
+const formatMonthKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
+app.get("/analytics/sales/monthly-summary", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const totals = await dbClient
+      .select({
+        year: sql<number>`YEAR(${orders.order_date})`,
+        month: sql<number>`MONTH(${orders.order_date})`,
+        totalSales: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.order_date, start),
+          lt(orders.order_date, end),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(sql`YEAR(${orders.order_date})`, sql`MONTH(${orders.order_date})`)
+      .orderBy(sql`YEAR(${orders.order_date})`, sql`MONTH(${orders.order_date})`);
+
+    const totalsByMonth = new Map<string, number>();
+
+    for (const row of totals) {
+      const year = Number(row.year);
+      const month = Number(row.month);
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+      totalsByMonth.set(key, Number(row.totalSales ?? 0));
+    }
+
+    const months: Array<{ month: string; totalSales: number }> = [];
+
+    for (let offset = 0; offset < 12; offset += 1) {
+      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
+      const key = formatMonthKey(current);
+      months.push({
+        month: key,
+        totalSales: totalsByMonth.get(key) ?? 0,
+      });
+    }
+
+    res.json({ months });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/stock-in/monthly-summary", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const rows = await dbClient
+      .select({
+        year: sql<number>`YEAR(${stock_in.received_date})`,
+        month: sql<number>`MONTH(${stock_in.received_date})`,
+        totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0)), 0)`,
+        totalValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
+      })
+      .from(stock_in)
+      .innerJoin(products, eq(stock_in.product_id, products.id))
+      .where(
+        and(
+          gte(stock_in.received_date, start),
+          lt(stock_in.received_date, end),
+          inArray(stock_in.status, receivedStockInStatuses)
+        )
+      )
+      .groupBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`)
+      .orderBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`);
+
+    const totalsByMonth = new Map<
+      string,
+      {
+        totalQuantity: number;
+        totalValue: number;
+      }
+    >();
+
+    for (const row of rows) {
+      const year = Number(row.year);
+      const month = Number(row.month);
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+
+      totalsByMonth.set(key, {
+        totalQuantity: Number(row.totalQuantity ?? 0),
+        totalValue: Number(row.totalValue ?? 0),
+      });
+    }
+
+    const months: Array<{
+      month: string;
+      totalQuantity: number;
+      totalValue: number;
+    }> = [];
+
+    for (let offset = 0; offset < 12; offset += 1) {
+      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
+      const key = formatMonthKey(current);
+      const data = totalsByMonth.get(key);
+
+      months.push({
+        month: key,
+        totalQuantity: data?.totalQuantity ?? 0,
+        totalValue: data?.totalValue ?? 0,
+      });
+    }
+
+    res.json({ months });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const [result] = await dbClient
+      .select({
+        total: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.order_date, startOfMonth),
+          lt(orders.order_date, startOfNextMonth)
+        )
+      );
+
+    const [previousResult] = await dbClient
+      .select({
+        total: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .where(
+        and(
+          gte(orders.order_date, startOfPreviousMonth),
+          lt(orders.order_date, startOfMonth)
+        )
+      );
+
+    const currentMonthTotal = Number(result?.total ?? 0);
+    const previousMonthTotal = Number(previousResult?.total ?? 0);
+    const percentChange =
+      previousMonthTotal === 0
+        ? currentMonthTotal > 0
+          ? 100
+          : 0
+        : ((currentMonthTotal - previousMonthTotal) / Math.abs(previousMonthTotal)) * 100;
+
+    res.json({
+      currentMonthTotal,
+      previousMonthTotal,
+      percentChange,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/sales/by-employee", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const monthKey = `${startOfMonth.getFullYear()}-${String(startOfMonth.getMonth() + 1).padStart(2, "0")}`;
+
+    const currentSales = await dbClient
+      .select({
+        employeeId: employee.id,
+        fname: employee.fname,
+        lname: employee.lname,
+        totalSales: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(employee)
+      .leftJoin(
+        orders,
+        and(
+          eq(orders.sale_id, employee.id),
+          gte(orders.order_date, startOfMonth),
+          lt(orders.order_date, startOfNextMonth),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(employee.id, employee.fname, employee.lname);
+
+    const aggregatedRows = currentSales.map((row) => {
+      const totalSales = Number(row.totalSales ?? 0);
+
+      const nameParts = [row.fname, row.lname].filter(Boolean);
+
+      return {
+        employeeId: row.employeeId,
+        name: nameParts.length > 0 ? nameParts.join(" ").trim() : "ไม่ระบุชื่อ",
+        totalSales,
+      };
+    });
+
+    const sortedRows = aggregatedRows.sort((a, b) => b.totalSales - a.totalSales);
+    const leaderTotal = sortedRows[0]?.totalSales ?? 0;
+
+    const rows = sortedRows.map((row, index) => {
+      const nextRow = sortedRows[index + 1];
+      return {
+        rank: index + 1,
+        employeeId: row.employeeId,
+        name: row.name,
+        totalSales: row.totalSales,
+        gapToLeader: leaderTotal - row.totalSales,
+        gapToNext: nextRow ? row.totalSales - nextRow.totalSales : null,
+      };
+    });
+
+    res.json({
+      month: monthKey,
+      rows,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/profit/monthly-total", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const currentMonthNet = await getMonthlyNetProfit({
+      start: startOfMonth,
+      end: startOfNextMonth,
+    });
+
+    const previousMonthNet = await getMonthlyNetProfit({
+      start: startOfPreviousMonth,
+      end: startOfMonth,
+    });
+
+    const currentNetProfit = currentMonthNet.netProfit;
+    const previousNetProfit = previousMonthNet.netProfit;
+
+    const percentChange =
+      previousNetProfit === 0
+        ? currentNetProfit === 0
+          ? 0
+          : currentNetProfit > 0
+            ? 100
+            : -100
+        : ((currentNetProfit - previousNetProfit) / Math.abs(previousNetProfit)) * 100;
+
+    res.json(
+      {
+        currentMonthNetProfit: currentNetProfit,
+        previousMonthNetProfit: previousNetProfit,
+        percentChange,
+      }
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 // --- Owner example ---
 app.get("/owner", (req, res) => {
    res.json({
@@ -321,33 +647,47 @@ app.get("/owner", (req, res) => {
 });
 
 // --- Google OAuth routes ---
-app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+if (isGoogleOAuthConfigured) {
+  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 
-app.get(
+  app.get(
     "/auth/google/callback",
     passport.authenticate("google", { failureRedirect: "/login" }),
     async (req, res, next) => {
-        try {
-            const userEmail = (req.user as any).emails[0].value;
+      try {
+        const userEmail = (req.user as any).emails[0].value;
+        const dbUser: any = await dbClient.query.employee.findFirst({
+          where: eq(employee.email, userEmail),
+        });
 
-            const dbUser:any = await dbClient.query.employee.findFirst({
-                where: eq(employee.email, userEmail),
-            });
-
-            if (!dbUser) {
-                res.redirect(
-                    `${process.env.FRONTEND_URL}/unauthorized`
-                );
-            }
-
-            res.redirect(
-                `${process.env.FRONTEND_URL}/${dbUser.role}`
-            );
-        } catch (err) {
-            next(err);
+        if (!dbUser) {
+          if (primaryFrontendUrl) {
+            res.redirect(`${primaryFrontendUrl}/unauthorized`);
+          } else {
+            res.status(403).json({ message: "Unauthorized" });
+          }
+          return;
         }
+
+        if (primaryFrontendUrl) {
+          res.redirect(`${primaryFrontendUrl}/${dbUser.role}`);
+        } else {
+          res.json({ message: "Login successful", role: dbUser.role });
+        }
+      } catch (err) {
+        next(err);
+      }
     }
-);
+  );
+} else {
+  app.get("/auth/google", (_req, res) => {
+    res.status(503).json({ message: "Google OAuth is not configured on this server" });
+  });
+
+  app.get("/auth/google/callback", (_req, res) => {
+    res.status(503).json({ message: "Google OAuth is not configured on this server" });
+  });
+}
 
 //email+password
 app.post("/auth/login", async (req, res, next) => {
@@ -375,9 +715,14 @@ app.post("/auth/login", async (req, res, next) => {
             return;
         }
 
-        res.json({
-            redirect: `${process.env.FRONTEND_URL}/${dbUser.role}`,
-        });
+        if (primaryFrontendUrl) {
+          res.json({
+            redirect: `${primaryFrontendUrl}/${dbUser.role}`,
+          });
+          return;
+        }
+
+        res.json({ message: "Login successful", role: dbUser.role });
     } catch (err) {
         next(err);
     }
