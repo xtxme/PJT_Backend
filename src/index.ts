@@ -325,6 +325,7 @@ createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
 
 // --- Analytics ---
 const completedOrderStatuses = ["completed", "paid", "shipped"] as const;
+const receivedStockInStatuses = ["received", "completed"] as const;
 
 type MonthRange = {
   start: Date;
@@ -404,6 +405,74 @@ app.get("/analytics/sales/monthly-summary", async (_req, res, next) => {
       months.push({
         month: key,
         totalSales: totalsByMonth.get(key) ?? 0,
+      });
+    }
+
+    res.json({ months });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/analytics/stock-in/monthly-summary", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const rows = await dbClient
+      .select({
+        year: sql<number>`YEAR(${stock_in.received_date})`,
+        month: sql<number>`MONTH(${stock_in.received_date})`,
+        totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0)), 0)`,
+        totalValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
+      })
+      .from(stock_in)
+      .innerJoin(products, eq(stock_in.product_id, products.id))
+      .where(
+        and(
+          gte(stock_in.received_date, start),
+          lt(stock_in.received_date, end),
+          inArray(stock_in.status, receivedStockInStatuses)
+        )
+      )
+      .groupBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`)
+      .orderBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`);
+
+    const totalsByMonth = new Map<
+      string,
+      {
+        totalQuantity: number;
+        totalValue: number;
+      }
+    >();
+
+    for (const row of rows) {
+      const year = Number(row.year);
+      const month = Number(row.month);
+      const key = `${year}-${String(month).padStart(2, "0")}`;
+
+      totalsByMonth.set(key, {
+        totalQuantity: Number(row.totalQuantity ?? 0),
+        totalValue: Number(row.totalValue ?? 0),
+      });
+    }
+
+    const months: Array<{
+      month: string;
+      totalQuantity: number;
+      totalValue: number;
+    }> = [];
+
+    for (let offset = 0; offset < 12; offset += 1) {
+      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
+      const key = formatMonthKey(current);
+      const data = totalsByMonth.get(key);
+
+      months.push({
+        month: key,
+        totalQuantity: data?.totalQuantity ?? 0,
+        totalValue: data?.totalValue ?? 0,
       });
     }
 

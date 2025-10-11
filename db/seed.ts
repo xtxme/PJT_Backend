@@ -1,7 +1,7 @@
 import { dbClient } from "@db/client.js";
 import bcrypt from "bcrypt";
 import { and, eq, inArray } from "drizzle-orm";
-import { employee, order_items, orders, products } from "@db/schema.js";
+import { employee, order_items, orders, products, stock_in } from "@db/schema.js";
 
 type OrderItemInsert = typeof order_items.$inferInsert;
 
@@ -511,11 +511,115 @@ async function seedOrderItems() {
     console.log(`Order items seeded (${inserted} new)`);
 }
 
+async function seedStockIn() {
+    const stockToSeed = [
+        {
+            product_id: 1,
+            quantity: 200,
+            received_date: new Date("2025-09-01T09:10:00Z"),
+            supplier_id: 1,
+            status: "received",
+            note: "Monthly replenishment for espresso beans",
+        },
+        {
+            product_id: 1,
+            quantity: 150,
+            received_date: new Date("2025-10-05T08:45:00Z"),
+            supplier_id: 1,
+            status: "received",
+            note: "Top-up before promotional week",
+        },
+        {
+            product_id: 2,
+            quantity: 80,
+            received_date: new Date("2025-09-10T10:30:00Z"),
+            supplier_id: 2,
+            status: "received",
+            note: "Restock for iced menu",
+        },
+        {
+            product_id: 2,
+            quantity: 60,
+            received_date: new Date("2025-10-03T14:20:00Z"),
+            supplier_id: 2,
+            status: "pending",
+            note: "Awaiting QA check",
+        },
+        {
+            product_id: 3,
+            quantity: 200,
+            received_date: new Date("2025-09-07T16:00:00Z"),
+            supplier_id: 3,
+            status: "received",
+            note: "Dairy-free demand increasing",
+        },
+        {
+            product_id: 3,
+            quantity: 150,
+            received_date: new Date("2025-10-09T11:40:00Z"),
+            supplier_id: 3,
+            status: "received",
+            note: "Cafe bundle fulfillment",
+        },
+        {
+            product_id: 4,
+            quantity: 95,
+            received_date: new Date("2025-09-18T15:05:00Z"),
+            supplier_id: 4,
+            status: "received",
+            note: "Seasonal drinks restock",
+        },
+        {
+            product_id: 4,
+            quantity: 70,
+            received_date: new Date("2025-10-12T13:25:00Z"),
+            supplier_id: 4,
+            status: "received",
+            note: "Weekend event prep",
+        },
+        {
+            product_id: 5,
+            quantity: 40,
+            received_date: new Date("2025-09-22T09:35:00Z"),
+            supplier_id: 5,
+            status: "received",
+            note: "Breakage replacement & new set",
+        },
+        {
+            product_id: 5,
+            quantity: 20,
+            received_date: new Date("2025-10-08T17:10:00Z"),
+            supplier_id: 5,
+            status: "received",
+            note: "New staff training kit",
+        },
+    ];
+
+    let inserted = 0;
+
+    for (const stock of stockToSeed) {
+        const existing = await dbClient.query.stock_in.findFirst({
+            where: and(
+                eq(stock_in.product_id, stock.product_id),
+                eq(stock_in.received_date, stock.received_date),
+            ),
+        });
+
+        if (existing) continue;
+
+        await dbClient.insert(stock_in).values(stock);
+        inserted += 1;
+    }
+
+    console.log(`Stock-in seeded (${inserted} new)`);
+}
+
 async function runSeed() {
     await seedEmployees();
     await seedProducts();
     await seedOrders();
     await seedOrderItems();
+    await seedStockIn();
 }
 
 runSeed()
