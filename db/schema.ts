@@ -20,7 +20,8 @@ export const products = mysqlTable("products", {
   image: varchar("image", { length: 255 }),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  category_id: int("category_id"),
+  category_id: int("category_id")
+    .references(() => categories.id),
   unit: int("unit"),
   cost: float("cost"),
   sell: float("sell"),
@@ -35,10 +36,12 @@ export const products = mysqlTable("products", {
 // stock_in
 export const stock_in = mysqlTable("stock_in", {
   id: int("id").autoincrement().primaryKey(),
-  product_id: int("product_id").notNull(),
+  product_id: int("product_id").notNull()
+    .references(() => products.id),
   quantity: int("quantity"),
   received_date: timestamp("received_date"),
-  supplier_id: int("supplier_id"),
+  supplier_id: int("supplier_id")
+    .references(() => suppliers.id),
   status: varchar("status", { length: 50 }),
   note: text("note"),
 });
@@ -70,9 +73,11 @@ export const employee = mysqlTable("employee", {
 // orders
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
-  sale_id: int("sale_id"),
+  sale_id: int("sale_id")
+    .references(() => employee.id),
   order_number: varchar("order_number", { length: 100 }),
-  customer_id: int("customer_id").notNull(),
+  customer_id: int("customer_id").notNull()
+    .references(() => customers.id),
   order_date: timestamp("order_date").defaultNow(),
   total_amount: decimal("total_amount", { precision: 10, scale: 2 }),
   status: varchar("status", { length: 50 }),
@@ -85,8 +90,10 @@ export const orders = mysqlTable("orders", {
 // order_items
 export const order_items = mysqlTable("order_items", {
   id: int("id").autoincrement().primaryKey(),
-  order_id: int("order_id").notNull(),
-  product_id: int("product_id").notNull(),
+  order_id: int("order_id").notNull()
+    .references(() => orders.id),
+  product_id: int("product_id").notNull()
+    .references(() => products.id),
   quantity: int("quantity"),
   unit_price: decimal("unit_price", { precision: 10, scale: 2 }),
   total_price: decimal("total_price", { precision: 10, scale: 2 }),
@@ -95,7 +102,8 @@ export const order_items = mysqlTable("order_items", {
 // log
 export const log = mysqlTable("log", {
   id: int("id").autoincrement().primaryKey(),
-  employee_id: int("employee_id").notNull(),
+  employee_id: int("employee_id").notNull()
+    .references(() => employee.id),
   action_name: varchar("action_name", { length: 100 }),
   detail: text("detail"),
   created_at: timestamp("created_at").defaultNow().notNull(),
