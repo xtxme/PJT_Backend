@@ -1,47 +1,220 @@
-import { dbClient } from "@db/client.js";
-import { employee } from "@db/schema.js";
-import bcrypt from "bcrypt";
+// seed.ts
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+import {
+    categories, suppliers, products, stock_in,
+    customers, employee, orders, order_items
+} from "./schema.js"; // <- ปรับ path ตามโปรเจกต์
+import { connectionConfig } from "./utils.js";
 
-async function seedEmployees() {
-    const hashedPassword = await bcrypt.hash("1234", 10); // same for all demo users
+async function main() {
+    const connection = await mysql.createConnection(connectionConfig);
 
-    await dbClient.insert(employee).values([
+    const db = drizzle(connection);
+
+    // ---- ล้างข้อมูลเก่าแบบระวังลำดับ FK (เลือกใช้หรือตัดทิ้งได้) ----
+    // ลบลูกก่อนค่อยลบพ่อแม่
+    await db.delete(order_items);
+    await db.delete(orders);
+    await db.delete(stock_in);
+    await db.delete(products);
+    await db.delete(suppliers);
+    await db.delete(customers);
+    await db.delete(employee);
+    await db.delete(categories);
+
+    // ---- 1) master: categories ----
+    await db.insert(categories).values([
+        { id: 1, name: "กล้อง" },
+        { id: 2, name: "เลนส์" },
+        { id: 3, name: "อุปกรณ์เสริม" },
+    ]);
+
+    // ---- 2) master: suppliers ----
+    await db.insert(suppliers).values([
+        { id: 1, company_name: "ChiangMai Camera Co.", email: "contact@cm-camera.co", tel: "080-111-1111" },
+        { id: 2, company_name: "Bangkok Lens Ltd.", email: "sales@bklens.com", tel: "080-222-2222" },
+    ]);
+
+    // ---- 3) master: customers ----
+    await db.insert(customers).values([
+        { id: 1, fname: "Somchai", lname: "W.", email: "somchai@example.com", tel: "089-000-1000" },
+        { id: 2, fname: "Suda", lname: "K.", email: "suda@example.com", tel: "089-000-2000" },
+        { id: 3, fname: "Anan", lname: "T.", email: "anan@example.com", tel: "089-000-3000" },
+    ]);
+
+    // ---- 4) master: employee (ใส่รหัสผ่านตัวอย่างเป็น bcrypt hash ของ "password") ----
+    // hash ต่อไปนี้คือ bcrypt ของ "password" (cost 10): $2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK
+    await db.insert(employee).values([
         {
             id: 1,
-            fname: "Owner",
-            lname: "User",
-            username: "owner_user",
+            fname: "Admin",
+            lname: "Owner",
+            username: "owner",
             status: "active",
-            tel: "0812345678",
+            tel: "081-123-4567",
             role: "owner",
-            email: "prae.tippy@gmail.com",
-            password: hashedPassword, // ✅ hashed
+            email: "owner@shop.local",
+            password: "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK",
         },
         {
             id: 2,
-            fname: "Sale",
-            lname: "User",
-            username: "sale_user",
+            fname: "Nok",
+            lname: "Sale",
+            username: "sale1",
             status: "active",
-            tel: "0899999999",
-            role: "sale",
-            email: "prts0774@gmail.com",
-            password: hashedPassword, // ✅ hashed
-        },
-        {
-            id: 3,
-            fname: "Warehouse",
-            lname: "User",
-            username: "warehouse_user",
-            status: "active",
-            tel: "0822222222",
-            role: "warehouse",
-            email: "warehouse@gmail.com",
-            password: hashedPassword, // ✅ hashed
+            tel: "081-222-3333",
+            role: "sales",
+            email: "sale1@shop.local",
+            password: "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK",
         },
     ]);
 
-    console.log("Employees seeded");
+    // ---- 5) products (FK -> categories.id) ----
+    await db.insert(products).values([
+        {
+            id: 1,
+            image: null,
+            name: "Mirrorless X100",
+            description: "กล้อง mirrorless ใช้งานอเนกประสงค์",
+            category_id: 1,
+            unit: 1,
+            cost: "15000.00",
+            sell: "19900.00",
+            profit: "4900.00",
+            quantity: 10,
+            quantity_pending: 0,
+            company: "CM Brand",
+            status: "active",
+        },
+        {
+            id: 2,
+            image: null,
+            name: "Lens 50mm f1.8",
+            description: "เลนส์ระยะมาตรฐาน",
+            category_id: 2,
+            unit: 1,
+            cost: "3500.00",
+            sell: "4990.00",
+            profit: "1490.00",
+            quantity: 20,
+            quantity_pending: 0,
+            company: "BK Lens",
+            status: "active",
+        },
+        {
+            id: 3,
+            image: null,
+            name: "Tripod Carbon",
+            description: "ขาตั้งคาร์บอน น้ำหนักเบา",
+            category_id: 3,
+            unit: 1,
+            cost: "1800.00",
+            sell: "2490.00",
+            profit: "690.00",
+            quantity: 15,
+            quantity_pending: 0,
+            company: "AccWorks",
+            status: "active",
+        },
+    ]);
+
+    // ---- 6) stock_in (FK -> products.id, suppliers.id) ----
+    await db.insert(stock_in).values([
+        {
+            id: 1,
+            product_id: 1,
+            quantity: 5,
+            supplier_id: 1,
+            status: "completed",
+            note: "ล็อตเปิดร้าน",
+        },
+        {
+            id: 2,
+            product_id: 2,
+            quantity: 10,
+            supplier_id: 2,
+            status: "completed",
+            note: "รีสต๊อกเลนส์ 50mm",
+        },
+        {
+            id: 3,
+            product_id: 3,
+            quantity: 5,
+            supplier_id: 1,
+            status: "some_received",
+            note: "ยังค้างรับ 2 ชิ้น",
+        },
+    ]);
+
+    // ---- 7) orders (FK -> employee.id, customers.id) ----
+    await db.insert(orders).values([
+        {
+            id: 1,
+            sale_id: 2, // พนักงานขาย sale1
+            order_number: "ORD-2025-0001",
+            customer_id: 1, // Somchai
+            total_amount: "24890.00",
+            status: "completed",
+            note: "ลูกค้าประจำ",
+            bill: null,
+        },
+        {
+            id: 2,
+            sale_id: 2,
+            order_number: "ORD-2025-0002",
+            customer_id: 2, // Suda
+            total_amount: "4990.00",
+            status: "completed",
+            note: null,
+            bill: null,
+        },
+    ]);
+
+    // ---- 8) order_items (FK -> orders.id, products.id) ----
+    await db.insert(order_items).values([
+        {
+            id: 1,
+            order_id: 1,
+            product_id: 1, // Mirrorless X100
+            quantity: 1,
+            unit_price: "19900.00",
+            total_price: "19900.00",
+        },
+        {
+            id: 2,
+            order_id: 1,
+            product_id: 3, // Tripod
+            quantity: 2,
+            unit_price: "2490.00",
+            total_price: "4980.00",
+        },
+        {
+            id: 3,
+            order_id: 2,
+            product_id: 2, // Lens 50mm
+            quantity: 1,
+            unit_price: "4990.00",
+            total_price: "4990.00",
+        },
+    ]);
+
+    // อัปเดตยอดรวม order ให้ตรงกับ items (กันพลาดถ้าปรับภายหลัง)
+    await connection.execute(
+        `UPDATE orders o
+       JOIN (
+         SELECT order_id, SUM(total_price) AS sum_total
+         FROM order_items
+         GROUP BY order_id
+       ) x ON x.order_id = o.id
+     SET o.total_amount = x.sum_total`
+    );
+
+    await connection.end();
+    console.log("✅ Seed completed.");
 }
 
-seedEmployees().then(() => process.exit(0));
+main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+});

@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1754464653389,
-      "tag": "0000_perfect_sabretooth",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1754556839757,
-      "tag": "0001_petite_doctor_strange",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "5",
-      "when": 1759085566669,
-      "tag": "0002_condemned_shadow_king",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "5",
-      "when": 1760166938718,
-      "tag": "0003_crazy_otto_octavius",
+      "when": 1760191885316,
+      "tag": "0000_public_speed",
       "breakpoints": true
     }
   ]
