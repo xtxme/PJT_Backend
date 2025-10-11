@@ -1,0 +1,1 @@
+ALTER TABLE `employee` MODIFY COLUMN `role` enum('owner','warehouse','sale') DEFAULT 'sale';

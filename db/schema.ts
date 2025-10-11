@@ -107,7 +107,7 @@ export const employee = mysqlTable(
     username: varchar("username", { length: 100 }),
     status: mysqlEnum("status", ["active", "inactive"]).notNull().default("active"),
     tel: varchar("tel", { length: 50 }),
-    role: mysqlEnum("role", ["owner", "warehouse_staff", "sales"]).default("sales"),
+    role: mysqlEnum("role", ["owner", "warehouse", "sale"]).default("sale"),
     email: varchar("email", { length: 255 }),
     password: varchar("password", { length: 255 }).notNull(),
     created_at: timestamp("created_at").defaultNow().notNull(),

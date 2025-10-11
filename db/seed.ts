@@ -6,10 +6,11 @@ import {
     customers, employee, orders, order_items
 } from "./schema.js"; // <- ปรับ path ตามโปรเจกต์
 import { connectionConfig } from "./utils.js";
+import bcrypt from "bcrypt";
 
 async function main() {
     const connection = await mysql.createConnection(connectionConfig);
-
+    const passwordHash = await bcrypt.hash("password123", 10);
     const db = drizzle(connection);
 
     // ---- ล้างข้อมูลเก่าแบบระวังลำดับ FK (เลือกใช้หรือตัดทิ้งได้) ----
@@ -48,26 +49,37 @@ async function main() {
     await db.insert(employee).values([
         {
             id: 1,
-            fname: "Admin",
-            lname: "Owner",
+            fname: "Owner",
+            lname: "Ice",
             username: "owner",
             status: "active",
             tel: "081-123-4567",
             role: "owner",
-            email: "owner@shop.local",
-            password: "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK",
+            email: "owner@gmail.com",
+            password: passwordHash,//password123
         },
         {
             id: 2,
-            fname: "Nok",
-            lname: "Sale",
+            fname: "Sale",
+            lname: "Morpor",
             username: "sale1",
             status: "active",
             tel: "081-222-3333",
-            role: "sales",
-            email: "sale1@shop.local",
-            password: "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK",
+            role: "sale",
+            email: "sale1@gmail.com",
+            password: passwordHash,//password123
         },
+        {
+            id: 3,
+            fname: "Warehouse",
+            lname: "Prae",
+            username: "warehouse1",
+            status: "active",
+            tel: "081-222-3334",
+            role: "warehouse",
+            email: "warehouse1@gmail.com",
+            password: passwordHash,//password123
+        }
     ]);
 
     // ---- 5) products (FK -> categories.id) ----
