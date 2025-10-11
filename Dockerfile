@@ -30,4 +30,4 @@ ENV NODE_ENV=production
 EXPOSE 5002
 
 # รันไฟล์ที่ build แล้วตรง ๆ (ไม่ผูกกับ npm/pnpm)
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/src/server.js"]
