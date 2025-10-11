@@ -5,6 +5,8 @@ services:
     image: mysql:8.0
     container_name: PJT-mysql
     restart: always
+    env_file:
+      - .env
     environment:
       MYSQL_DATABASE: ${MYSQL_DB}
       MYSQL_USER: ${MYSQL_APP_USER}
@@ -34,6 +36,8 @@ services:
       - PJT-net
     depends_on:
       - mysql # condition: service_healthy
+    env_file:
+      - .env
     environment:
       MYSQL_DB: ${MYSQL_DB}
       MYSQL_PORT: ${MYSQL_PORT}

@@ -21,9 +21,9 @@ RUN pnpm install && pnpm store prune
 COPY . .
 
 # Build the application
-RUN npm run build
+RUN pnpm run build
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 ENV PORT 3100
 
 EXPOSE 3100

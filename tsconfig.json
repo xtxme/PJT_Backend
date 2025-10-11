@@ -1,15 +1,18 @@
 {
   "extends": [
-    "@tsconfig/node-lts/tsconfig.json",
-    "@tsconfig/node-ts/tsconfig.json"
+    "@tsconfig/node-lts/tsconfig.json"
   ],
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "baseUrl": ".",
     "paths": {
       "@db/*": ["./db/*"]
     },
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "strict": true
   },
   "include": [
     "./src/**/*",

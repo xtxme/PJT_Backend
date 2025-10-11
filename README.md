@@ -11,6 +11,7 @@
 - `pnpm add -D @types/uuid`
 - `docker compose up -d`
 - `npm run db:push`
+- `npm run db:seed`
 - `pnpm run dev`
 
 
