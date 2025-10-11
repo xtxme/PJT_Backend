@@ -7,8 +7,8 @@
   "license": "AGPL-version-3.0",
   "private": false,
   "engines": {
-    "node": ">= 14.0.0",
-    "npm": ">= 6.0.0"
+    "node": ">=20.11.0",
+    "npm": ">=9.0.0"
   },
   "homepage": "",
   "repository": {
@@ -24,12 +24,12 @@
   },
   "contributors": [],
   "scripts": {
-    "dev": "nodemon",
-    "build": "tsc && tsc-alias",
-    "start": "node ./dist/src/index.js",
-    "db:generate": "cross-env NODE_OPTIONS=\"--import tsx\" drizzle-kit generate",
-    "db:push": "cross-env NODE_OPTIONS=\"--import tsx\" drizzle-kit push",
-    "db:migrate": "cross-env NODE_OPTIONS=\"--import tsx\" drizzle-kit migrate",
+    "dev": "nodemon --exec tsx src/server.ts",
+    "build": "tsc -p tsconfig.json && tsc-alias -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:generate": "cross-env NODE_OPTIONS='--import tsx' drizzle-kit generate",
+    "db:push": "cross-env NODE_OPTIONS='--import tsx' drizzle-kit push",
+    "db:migrate": "cross-env NODE_OPTIONS='--import tsx' drizzle-kit migrate",
     "db:prototype": "tsx ./db/prototype.ts",
     "db:seed": "tsx ./db/seed.ts"
   },
