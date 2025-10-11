@@ -1,6 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
+  "id": "9311fb29-7251-4bb9-8586-94661baae2d8",
+  "prevId": "581001bd-a3cb-4f9d-9891-526cefeb0692",
   "id": "c86b0cbe-48ad-4dee-bec5-d5a4be8314ad",
   "prevId": "12247533-bc4d-4ca4-9e85-972e220ef098",
   "tables": {
@@ -224,7 +226,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {
         "log_id": {
           "name": "log_id",
@@ -283,7 +284,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {
         "order_items_id": {
           "name": "order_items_id",
@@ -387,6 +387,19 @@
           "tableTo": "employee",
           "columnsFrom": [
             "sale_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_customer_id_customers_id_fk": {
+          "name": "orders_customer_id_customers_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "customers",
+          "columnsFrom": [
+            "customer_id"
           ],
           "columnsTo": [
             "id"
@@ -511,7 +524,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {
         "products_id": {
           "name": "products_id",
@@ -577,7 +589,6 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
       "compositePrimaryKeys": {
         "stock_in_id": {
           "name": "stock_in_id",
