@@ -22,6 +22,13 @@
       "when": 1759085566669,
       "tag": "0002_condemned_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1760166938718,
+      "tag": "0003_crazy_otto_octavius",
+      "breakpoints": true
     }
   ]
 }
