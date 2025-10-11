@@ -324,7 +324,7 @@ createCRUDRoutes(dbClient.query.log, log, "/log");
 createCRUDRoutes(dbClient.query.stock_in, stock_in, "/stock_in");
 
 // --- Analytics ---
-const completedOrderStatuses = ["completed", "paid", "shipped"] as const;
+const completedOrderStatuses = ["`completed`", "paid", "shipped"] as const;
 const receivedStockInStatuses = ["received", "completed"] as const;
 
 type MonthRange = {
@@ -482,6 +482,7 @@ app.get("/analytics/stock-in/monthly-summary", async (_req, res, next) => {
   }
 });
 
+//ยอดขายรวม
 app.get("/analytics/sales/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -595,6 +596,7 @@ app.get("/analytics/sales/by-employee", async (_req, res, next) => {
   }
 });
 
+//กำไรสุทธิ
 app.get("/analytics/profit/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
