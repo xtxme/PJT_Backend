@@ -13,47 +13,44 @@ services:
       MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     ports:
-      - "${MYSQL_PORT}:${MYSQL_PORT}"
+      - "${MYSQL_PORT}:3306"      # ขวาต้องเป็น 3306 เสมอภายในคอนเทนเนอร์
     volumes:
       - mysql-data:/var/lib/mysql
     networks:
       - PJT-net
-    # healthcheck:
-    #   test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 10
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: PJT-backend
-    # image: ${BACKEND_IMAGE_NAME}
-    ports:
-      - "${BACKEND_PORT}:${BACKEND_PORT}"
-    networks:
-      - PJT-net
+    restart: always
     depends_on:
-      - mysql # condition: service_healthy
+      mysql:
+        condition: service_healthy
     env_file:
       - .env
     environment:
-      MYSQL_DB: ${MYSQL_DB}
-      MYSQL_PORT: ${MYSQL_PORT}
+      # บังคับให้ backend ชี้ host เป็นชื่อ service "mysql"
       MYSQL_HOST: mysql
-      MYSQL_APP_USER: ${MYSQL_APP_USER}
-      MYSQL_APP_PASSWORD: ${MYSQL_APP_PASSWORD}
+      # ให้แอปใช้พอร์ตนี้ (โค้ดอ่าน BACKEND_PORT อยู่แล้ว)
+      BACKEND_PORT: ${BACKEND_PORT}
       NODE_ENV: ${NODE_ENV:-production}
-      PORT: ${BACKEND_PORT}
       DEBUG: pf-backend
-    restart: always
-    volumes:
-      - ./backend/logs:/app/logs
+    ports:
+      - "${BACKEND_PORT}:5002"   # ซ้าย = host, ขวา = container (ต้องเป็น 5002 ให้ตรง EXPOSE/CMD)
+    networks:
+      - PJT-net
+    # volumes:                 # ตัดออกก่อน ถ้ายังไม่มีโฟลเดอร์ logs จริง
+    #   - ./backend/logs:/app/logs
 
 volumes:
   mysql-data:
-
 
 networks:
   PJT-net:
