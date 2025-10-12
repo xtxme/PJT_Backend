@@ -108,6 +108,7 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
   return months;
 }
 
+//Sale Summary
 router.get("/sales/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -157,6 +158,7 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
   }
 });
 
+//Stock In Purchase Summary
 router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -171,6 +173,7 @@ router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   }
 });
 
+//Stock In Purchase Summary
 router.get("/stock-in/summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -191,6 +194,7 @@ router.get("/stock-in/summary", async (_req, res, next) => {
   }
 });
 
+//ยอดขายรวม
 router.get("/sales/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -241,6 +245,7 @@ router.get("/sales/monthly-total", async (_req, res, next) => {
   }
 });
 
+//ยอดขายรายบุคคลของพนักงาน
 router.get("/sales/by-employee", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -304,6 +309,7 @@ router.get("/sales/by-employee", async (_req, res, next) => {
   }
 });
 
+//กำไรสุทธิ
 router.get("/profit/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -343,7 +349,7 @@ router.get("/profit/monthly-total", async (_req, res, next) => {
   }
 });
 
-//todo
+//Highest Order Value by Customer
 router.get("/customers/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -395,6 +401,7 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
   }
 });
 
+//Highest Order Value by Company
 router.get("/company/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -445,6 +452,202 @@ router.get("/company/top-order-value", async (_req, res, next) => {
   }
 });
 
+//Dead Stock
+router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    type DeadStockProductRow = {
+      month_key: string;
+      product_id: number | string | null;
+      product_name: string | null;
+      dead_qty: number | string | null;
+      unit_cost: number | string | null;
+      dead_value: number | string | null;
+    };
+
+    const query = sql<DeadStockProductRow[]>`
+      WITH RECURSIVE month_series AS (
+        SELECT DATE(${start}) AS month_start
+        UNION ALL
+        SELECT DATE_ADD(month_start, INTERVAL 1 MONTH)
+        FROM month_series
+        WHERE DATE_ADD(month_start, INTERVAL 1 MONTH) < DATE(${end})
+      ),
+      month_bounds AS (
+        SELECT
+          month_start,
+          DATE_ADD(month_start, INTERVAL 1 MONTH) AS month_end,
+          DATE_FORMAT(month_start, '%Y-%m') AS month_key
+        FROM month_series
+      )
+      SELECT
+        mb.month_key,
+        p.id AS product_id,
+        p.name AS product_name,
+        p.quantity AS dead_qty,
+        COALESCE(p.cost, 0) AS unit_cost,
+        p.quantity * COALESCE(p.cost, 0) AS dead_value
+      FROM month_bounds mb
+      INNER JOIN products p
+        ON p.quantity > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM order_items oi
+          INNER JOIN orders o ON o.id = oi.order_id
+          WHERE oi.product_id = p.id
+            AND o.order_date >= mb.month_start
+            AND o.order_date < mb.month_end
+            AND o.status IN ('completed', 'เสร็จสิ้น')
+        )
+      ORDER BY mb.month_key, p.name
+    `;
+
+    const rawRows = await dbClient.execute(query);
+
+    const rows: DeadStockProductRow[] = Array.isArray(rawRows)
+      ? (rawRows as unknown as DeadStockProductRow[])
+      : [];
+
+    const monthsByKey = new Map<
+      string,
+      {
+        month_key: string;
+        totals: {
+          dead_products: number;
+          dead_qty: number;
+          dead_value: number;
+        };
+        products: Array<{
+          product_id: number | null;
+          product_name: string;
+          dead_qty: number;
+          dead_value: number;
+        }>;
+      }
+    >();
+
+    for (let offset = 0; offset < 12; offset += 1) {
+      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
+      const key = formatMonthKey(current);
+      monthsByKey.set(key, {
+        month_key: key,
+        totals: {
+          dead_products: 0,
+          dead_qty: 0,
+          dead_value: 0,
+        },
+        products: [],
+      });
+    }
+
+    const clampNumber = (value: unknown): number => {
+      if (typeof value === "number") {
+        return Number.isFinite(value) ? value : 0;
+      }
+      if (typeof value === "string" && value.trim().length > 0) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+
+    for (const row of rows) {
+      const monthKey = row.month_key;
+      if (typeof monthKey !== "string") {
+        continue;
+      }
+
+      const monthEntry = monthsByKey.get(monthKey);
+      if (!monthEntry) {
+        continue;
+      }
+
+      const productId = clampNumber(row.product_id);
+      const productName =
+        typeof row.product_name === "string" && row.product_name.trim().length > 0
+          ? row.product_name.trim()
+          : `สินค้า #${productId || "ไม่ระบุ"}`;
+
+      const deadQty = clampNumber(row.dead_qty);
+      const deadValue = clampNumber(row.dead_value);
+
+      monthEntry.products.push({
+        product_id: Number.isFinite(productId) ? productId : null,
+        product_name: productName,
+        dead_qty: deadQty,
+        dead_value: deadValue,
+      });
+
+      monthEntry.totals.dead_products += 1;
+      monthEntry.totals.dead_qty += deadQty;
+      monthEntry.totals.dead_value += deadValue;
+    }
+
+    const months = Array.from(monthsByKey.values());
+
+    const latestMonth = months.at(-1) ?? null;
+    const previousMonth = months.length >= 2 ? months.at(-2) ?? null : null;
+
+    const computeDiff = (
+      current: number,
+      previous: number | undefined | null
+    ): {
+      absolute: number;
+      percent: number | null;
+    } => {
+      const currentValue = Number.isFinite(current) ? current : 0;
+      const previousValue =
+        typeof previous === "number" && Number.isFinite(previous) ? previous : 0;
+
+      const absolute = currentValue - previousValue;
+
+      if (previousValue === 0) {
+        return {
+          absolute,
+          percent: currentValue === 0 ? 0 : null,
+        };
+      }
+
+      return {
+        absolute,
+        percent: ((currentValue - previousValue) / Math.abs(previousValue)) * 100,
+      };
+    };
+
+    const latestSummary = latestMonth
+      ? {
+          month_key: latestMonth.month_key,
+          totals: latestMonth.totals,
+          products: latestMonth.products,
+          compare_to_previous: previousMonth
+            ? {
+                dead_products: computeDiff(
+                  latestMonth.totals.dead_products,
+                  previousMonth?.totals.dead_products
+                ),
+                dead_qty: computeDiff(
+                  latestMonth.totals.dead_qty,
+                  previousMonth?.totals.dead_qty
+                ),
+                dead_value: computeDiff(
+                  latestMonth.totals.dead_value,
+                  previousMonth?.totals.dead_value
+                ),
+              }
+            : null,
+        }
+      : null;
+
+    res.json({ months, latest: latestSummary });
+  } catch (error) {
+    next(error);
+  }
+});
+
+//Top Sellers
 router.get("/products/top-sellers", async (_req, res, next) => {
   try {
     const now = new Date();
