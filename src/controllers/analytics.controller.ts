@@ -395,6 +395,111 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
   }
 });
 
+router.get("/company/top-order-value", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const rows = await dbClient
+      .select({
+        company: products.company,
+        totalOrderValue: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${order_items.unit_price}, 0)), 0)`,
+      })
+      .from(order_items)
+      .innerJoin(orders, eq(order_items.order_id, orders.id))
+      .innerJoin(products, eq(order_items.product_id, products.id))
+      .where(
+        and(
+          gte(orders.order_date, start),
+          lt(orders.order_date, end),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(products.company)
+      .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${order_items.unit_price}, 0)), 0) DESC`)
+      .limit(6);
+
+    const companies = rows.map((row) => {
+      const totalOrderValue = Number(row.totalOrderValue ?? 0);
+      const name = row.company?.trim() || "ไม่ระบุบริษัท";
+
+      return {
+        company: name,
+        name,
+        totalOrderValue,
+        totalAmount: totalOrderValue,
+        value: totalOrderValue,
+      };
+    });
+
+    res.json({
+      range: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      },
+      companies,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/products/top-sellers", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const rows = await dbClient
+      .select({
+        productId: products.id,
+        productName: products.name,
+        company: products.company,
+        totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0)`,
+      })
+      .from(order_items)
+      .innerJoin(orders, eq(order_items.order_id, orders.id))
+      .innerJoin(products, eq(order_items.product_id, products.id))
+      .where(
+        and(
+          gte(orders.order_date, start),
+          lt(orders.order_date, end),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(products.id, products.name, products.company)
+      .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0) DESC`)
+      .limit(6);
+
+    const productsByQuantity = rows.map((row) => {
+      const totalQuantity = Number(row.totalQuantity ?? 0);
+      const trimmedName = row.productName?.trim() || row.company?.trim() || "ไม่ระบุสินค้า";
+      const company = row.company?.trim() ?? null;
+
+      return {
+        productId: row.productId,
+        name: trimmedName,
+        productName: trimmedName,
+        company,
+        totalQuantity,
+        quantitySold: totalQuantity,
+        orders: totalQuantity,
+      };
+    });
+
+    res.json({
+      range: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      },
+      products: productsByQuantity,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 //todo
 
 
