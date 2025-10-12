@@ -1,5 +1,5 @@
 import express from "express";
-import cors from "cors";
+import cors, { CorsOptions } from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import session from "express-session";
@@ -10,10 +10,34 @@ import "./config/passport.js"; // โหลดกลยุทธ์ Google
 
 const app = express();
 
+const parseOrigins = (raw?: string): string[] =>
+    (raw ?? "")
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+        .map((origin) => origin.replace(/\/$/, ""));
+
+const defaultOrigins = ["http://localhost:3000", "http://localhost:3001"];
+const allowedOrigins = Array.from(
+    new Set([...defaultOrigins, ...parseOrigins(process.env.FRONTEND_URL)])
+);
+
+const corsOptions: CorsOptions = {
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        const normalizedOrigin = origin.replace(/\/$/, "");
+        if (allowedOrigins.includes(normalizedOrigin)) {
+            return callback(null, true);
+        }
+        return callback(null, false);
+    },
+    credentials: true,
+};
+
 // middlewares พื้นฐาน
 app.use(morgan("dev"));
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // session + passport

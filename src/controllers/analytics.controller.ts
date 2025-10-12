@@ -13,6 +13,12 @@ type MonthRange = {
   end: Date;
 };
 
+type StockInMonthlyRecord = {
+  month: string;
+  totalQuantity: number;
+  totalValue: number;
+};
+
 async function getMonthlyNetProfit({ start, end }: MonthRange) {
   const [result] = await dbClient
     .select({
@@ -45,6 +51,62 @@ const formatMonthKey = (date: Date) => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
 };
+
+async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<StockInMonthlyRecord[]> {
+  const rows = await dbClient
+    .select({
+      year: sql<number>`YEAR(${stock_in.received_date})`,
+      month: sql<number>`MONTH(${stock_in.received_date})`,
+      totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0)), 0)`,
+      totalValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
+    })
+    .from(stock_in)
+    .innerJoin(products, eq(stock_in.product_id, products.id))
+    .where(
+      and(
+        gte(stock_in.received_date, start),
+        lt(stock_in.received_date, end),
+        inArray(stock_in.status, receivedStockInStatuses)
+      )
+    )
+    .groupBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`)
+    .orderBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`);
+
+  const totalsByMonth = new Map<
+    string,
+    {
+      totalQuantity: number;
+      totalValue: number;
+    }
+  >();
+
+  for (const row of rows) {
+    const year = Number(row.year);
+    const month = Number(row.month);
+    const key = `${year}-${String(month).padStart(2, "0")}`;
+
+    totalsByMonth.set(key, {
+      totalQuantity: Number(row.totalQuantity ?? 0),
+      totalValue: Number(row.totalValue ?? 0),
+    });
+  }
+
+  const months: StockInMonthlyRecord[] = [];
+
+  for (let offset = 0; offset < 12; offset += 1) {
+    const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
+    const key = formatMonthKey(current);
+    const data = totalsByMonth.get(key);
+
+    months.push({
+      month: key,
+      totalQuantity: data?.totalQuantity ?? 0,
+      totalValue: data?.totalValue ?? 0,
+    });
+  }
+
+  return months;
+}
 
 router.get("/sales/monthly-summary", async (_req, res, next) => {
   try {
@@ -101,63 +163,29 @@ router.get("/stock-in/monthly-summary", async (_req, res, next) => {
     const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    const rows = await dbClient
-      .select({
-        year: sql<number>`YEAR(${stock_in.received_date})`,
-        month: sql<number>`MONTH(${stock_in.received_date})`,
-        totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0)), 0)`,
-        totalValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
-      })
-      .from(stock_in)
-      .innerJoin(products, eq(stock_in.product_id, products.id))
-      .where(
-        and(
-          gte(stock_in.received_date, start),
-          lt(stock_in.received_date, end),
-          inArray(stock_in.status, receivedStockInStatuses)
-        )
-      )
-      .groupBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`)
-      .orderBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`);
-
-    const totalsByMonth = new Map<
-      string,
-      {
-        totalQuantity: number;
-        totalValue: number;
-      }
-    >();
-
-    for (const row of rows) {
-      const year = Number(row.year);
-      const month = Number(row.month);
-      const key = `${year}-${String(month).padStart(2, "0")}`;
-
-      totalsByMonth.set(key, {
-        totalQuantity: Number(row.totalQuantity ?? 0),
-        totalValue: Number(row.totalValue ?? 0),
-      });
-    }
-
-    const months: Array<{
-      month: string;
-      totalQuantity: number;
-      totalValue: number;
-    }> = [];
-
-    for (let offset = 0; offset < 12; offset += 1) {
-      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
-      const key = formatMonthKey(current);
-      const data = totalsByMonth.get(key);
-
-      months.push({
-        month: key,
-        totalQuantity: data?.totalQuantity ?? 0,
-        totalValue: data?.totalValue ?? 0,
-      });
-    }
+    const months = await getStockInMonthlySummary({ start, end });
 
     res.json({ months });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/stock-in/summary", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const months = await getStockInMonthlySummary({ start, end });
+
+    const data = months.map((month) => ({
+      month_key: month.month,
+      total_value: month.totalValue,
+      total_quantity: month.totalQuantity,
+    }));
+
+    res.json({ data });
   } catch (error) {
     next(error);
   }
@@ -350,6 +378,8 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
         customerId: row.customerId,
         name: nameParts.length > 0 ? nameParts.join(" ").trim() : "ไม่ระบุชื่อ",
         totalOrderValue,
+        totalAmount: totalOrderValue,
+        value: totalOrderValue,
       };
     });
 
