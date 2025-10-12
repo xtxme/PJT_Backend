@@ -89,6 +89,7 @@ export const customers = mysqlTable(
     fname: varchar("fname", { length: 100 }),
     lname: varchar("lname", { length: 100 }),
     email: varchar("email", { length: 255 }),
+    address: text("address"),
     tel: varchar("tel", { length: 50 }),
   },
   (t) => ({
