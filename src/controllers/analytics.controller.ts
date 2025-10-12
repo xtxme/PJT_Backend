@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { dbClient } from "@db/client.js";
-import { orders, order_items, products, stock_in, employee } from "@db/schema.js";
+import { orders, order_items, products, stock_in, employee, customers } from "@db/schema.js";
 
 const router = Router();
 
@@ -314,5 +314,58 @@ router.get("/profit/monthly-total", async (_req, res, next) => {
     next(error);
   }
 });
+
+//todo
+router.get("/customers/top-order-value", async (_req, res, next) => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const rows = await dbClient
+      .select({
+        customerId: customers.id,
+        fname: customers.fname,
+        lname: customers.lname,
+        totalOrderValue: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
+      })
+      .from(orders)
+      .innerJoin(customers, eq(orders.customer_id, customers.id))
+      .where(
+        and(
+          gte(orders.order_date, start),
+          lt(orders.order_date, end),
+          inArray(orders.status, completedOrderStatuses)
+        )
+      )
+      .groupBy(customers.id, customers.fname, customers.lname)
+      .orderBy(sql`COALESCE(SUM(${orders.total_amount}), 0) DESC`)
+      .limit(6);
+
+    const result = rows.map((row) => {
+      const totalOrderValue = Number(row.totalOrderValue ?? 0);
+      const nameParts = [row.fname, row.lname].filter(Boolean);
+
+      return {
+        customerId: row.customerId,
+        name: nameParts.length > 0 ? nameParts.join(" ").trim() : "ไม่ระบุชื่อ",
+        totalOrderValue,
+      };
+    });
+
+    res.json({
+      range: {
+        start: start.toISOString(),
+        end: end.toISOString(),
+      },
+      customers: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+//todo
+
 
 export default router;
