@@ -46,11 +46,91 @@ async function getMonthlyNetProfit({ start, end }: MonthRange) {
   };
 }
 
-const formatMonthKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
+const BANGKOK_TIME_ZONE = "Asia/Bangkok";
+const BANGKOK_OFFSET_MINUTES = 7 * 60;
+
+const bangkokMonthFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: BANGKOK_TIME_ZONE,
+  year: "numeric",
+  month: "numeric",
+});
+
+type BangkokYearMonth = {
+  year: number;
+  monthIndex: number;
 };
+
+const getBangkokYearMonth = (referenceDate: Date): BangkokYearMonth => {
+  const parts = bangkokMonthFormatter.formatToParts(referenceDate);
+  const yearPart = parts.find((part) => part.type === "year");
+  const monthPart = parts.find((part) => part.type === "month");
+
+  const fallbackYear = referenceDate.getUTCFullYear();
+  const fallbackMonthIndex = referenceDate.getUTCMonth();
+
+  const parsedYear = Number.parseInt(yearPart?.value ?? "", 10);
+  const parsedMonth = Number.parseInt(monthPart?.value ?? "", 10);
+
+  const year = Number.isNaN(parsedYear) ? fallbackYear : parsedYear;
+  const monthIndex = Number.isNaN(parsedMonth) ? fallbackMonthIndex : parsedMonth - 1;
+
+  return { year, monthIndex };
+};
+
+const createBangkokMonthStartDate = (year: number, monthIndex: number) => {
+  const utcDate = new Date(Date.UTC(year, monthIndex, 1));
+  // Align the timestamp with midnight in Asia/Bangkok (UTC+7)
+  utcDate.setUTCMinutes(utcDate.getUTCMinutes() - BANGKOK_OFFSET_MINUTES);
+  return utcDate;
+};
+
+const getBangkokMonthKeyFromParts = ({ year, monthIndex }: BangkokYearMonth) =>
+  `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+
+const getBangkokYearMonthWithOffset = (
+  referenceDate: Date,
+  offset: number
+): BangkokYearMonth => {
+  const { year, monthIndex } = getBangkokYearMonth(referenceDate);
+  const totalMonths = year * 12 + monthIndex + offset;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonthIndex = totalMonths - targetYear * 12;
+
+  return {
+    year: targetYear,
+    monthIndex: targetMonthIndex,
+  };
+};
+
+const getBangkokMonthRangeFromOffset = (referenceDate: Date, offset: number): MonthRange => {
+  const startParts = getBangkokYearMonthWithOffset(referenceDate, offset);
+  const endParts = getBangkokYearMonthWithOffset(referenceDate, offset + 1);
+
+  return {
+    start: createBangkokMonthStartDate(startParts.year, startParts.monthIndex),
+    end: createBangkokMonthStartDate(endParts.year, endParts.monthIndex),
+  };
+};
+
+const getBangkokTrailingMonthsRange = (
+  referenceDate: Date,
+  months: number
+): MonthRange => {
+  if (months <= 0) {
+    throw new Error("Months must be greater than zero");
+  }
+
+  const startParts = getBangkokYearMonthWithOffset(referenceDate, -(months - 1));
+  const endParts = getBangkokYearMonthWithOffset(referenceDate, 1);
+
+  return {
+    start: createBangkokMonthStartDate(startParts.year, startParts.monthIndex),
+    end: createBangkokMonthStartDate(endParts.year, endParts.monthIndex),
+  };
+};
+
+const getCurrentBangkokMonthRange = (referenceDate: Date): MonthRange =>
+  getBangkokMonthRangeFromOffset(referenceDate, 0);
 
 async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<StockInMonthlyRecord[]> {
   const rows = await dbClient
@@ -94,8 +174,8 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
   const months: StockInMonthlyRecord[] = [];
 
   for (let offset = 0; offset < 12; offset += 1) {
-    const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
-    const key = formatMonthKey(current);
+    const { year, monthIndex } = getBangkokYearMonthWithOffset(start, offset);
+    const key = getBangkokMonthKeyFromParts({ year, monthIndex });
     const data = totalsByMonth.get(key);
 
     months.push({
@@ -112,8 +192,7 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
 router.get("/sales/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const { start, end } = getBangkokTrailingMonthsRange(now, 12);
 
     const totals = await dbClient
       .select({
@@ -144,8 +223,8 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
     const months: Array<{ month: string; totalSales: number }> = [];
 
     for (let offset = 0; offset < 12; offset += 1) {
-      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
-      const key = formatMonthKey(current);
+      const { year, monthIndex } = getBangkokYearMonthWithOffset(start, offset);
+      const key = getBangkokMonthKeyFromParts({ year, monthIndex });
       months.push({
         month: key,
         totalSales: totalsByMonth.get(key) ?? 0,
@@ -162,8 +241,7 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
 router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const { start, end } = getBangkokTrailingMonthsRange(now, 12);
 
     const months = await getStockInMonthlySummary({ start, end });
 
@@ -177,8 +255,7 @@ router.get("/stock-in/monthly-summary", async (_req, res, next) => {
 router.get("/stock-in/summary", async (_req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const { start, end } = getBangkokTrailingMonthsRange(now, 12);
 
     const months = await getStockInMonthlySummary({ start, end });
 
@@ -198,9 +275,12 @@ router.get("/stock-in/summary", async (_req, res, next) => {
 router.get("/sales/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const currentRange = getBangkokMonthRangeFromOffset(now, 0);
+    const previousRange = getBangkokMonthRangeFromOffset(now, -1);
+
+    const startOfMonth = currentRange.start;
+    const startOfNextMonth = currentRange.end;
+    const startOfPreviousMonth = previousRange.start;
 
     const [result] = await dbClient
       .select({
@@ -249,10 +329,11 @@ router.get("/sales/monthly-total", async (_req, res, next) => {
 router.get("/sales/by-employee", async (_req, res, next) => {
   try {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const currentRange = getBangkokMonthRangeFromOffset(now, 0);
+    const startOfMonth = currentRange.start;
+    const startOfNextMonth = currentRange.end;
 
-    const monthKey = `${startOfMonth.getFullYear()}-${String(startOfMonth.getMonth() + 1).padStart(2, "0")}`;
+    const monthKey = getBangkokMonthKeyFromParts(getBangkokYearMonth(now));
 
     const currentSales = await dbClient
       .select({
@@ -313,9 +394,12 @@ router.get("/sales/by-employee", async (_req, res, next) => {
 router.get("/profit/monthly-total", async (_req, res, next) => {
   try {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const currentRange = getBangkokMonthRangeFromOffset(now, 0);
+    const previousRange = getBangkokMonthRangeFromOffset(now, -1);
+
+    const startOfMonth = currentRange.start;
+    const startOfNextMonth = currentRange.end;
+    const startOfPreviousMonth = previousRange.start;
 
     const currentMonthNet = await getMonthlyNetProfit({
       start: startOfMonth,
@@ -353,8 +437,7 @@ router.get("/profit/monthly-total", async (_req, res, next) => {
 router.get("/customers/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const { start: startOfTargetMonth, end: startOfNextMonth } = getCurrentBangkokMonthRange(now);
 
     const rows = await dbClient
       .select({
@@ -367,8 +450,8 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
       .innerJoin(customers, eq(orders.customer_id, customers.id))
       .where(
         and(
-          gte(orders.order_date, start),
-          lt(orders.order_date, end),
+          gte(orders.order_date, startOfTargetMonth),
+          lt(orders.order_date, startOfNextMonth),
           inArray(orders.status, completedOrderStatuses)
         )
       )
@@ -391,8 +474,8 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
 
     res.json({
       range: {
-        start: start.toISOString(),
-        end: end.toISOString(),
+        start: startOfTargetMonth.toISOString(),
+        end: startOfNextMonth.toISOString(),
       },
       customers: result,
     });
@@ -405,8 +488,7 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
 router.get("/company/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const { start, end } = getCurrentBangkokMonthRange(now);
 
     const rows = await dbClient
       .select({
@@ -456,8 +538,7 @@ router.get("/company/top-order-value", async (_req, res, next) => {
 router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const { start, end } = getBangkokTrailingMonthsRange(now, 12);
 
     type DeadStockProductRow = {
       month_key: string;
@@ -530,8 +611,8 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
     >();
 
     for (let offset = 0; offset < 12; offset += 1) {
-      const current = new Date(start.getFullYear(), start.getMonth() + offset, 1);
-      const key = formatMonthKey(current);
+      const { year, monthIndex } = getBangkokYearMonthWithOffset(start, offset);
+      const key = getBangkokMonthKeyFromParts({ year, monthIndex });
       monthsByKey.set(key, {
         month_key: key,
         totals: {
@@ -648,11 +729,40 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
 });
 
 //Top Sellers
-router.get("/products/top-sellers", async (_req, res, next) => {
+router.get("/products/top-sellers", async (req, res, next) => {
   try {
     const now = new Date();
-    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const rawMonth = Array.isArray(req.query.month) ? req.query.month.at(-1) : req.query.month;
+    const rawYear = Array.isArray(req.query.year) ? req.query.year.at(-1) : req.query.year;
+
+    const parsedMonth =
+      typeof rawMonth === "string" ? Number.parseInt(rawMonth, 10) : Number.NaN;
+    const parsedYear =
+      typeof rawYear === "string" ? Number.parseInt(rawYear, 10) : Number.NaN;
+
+    let targetParts: BangkokYearMonth;
+    if (
+      Number.isInteger(parsedYear) &&
+      Number.isInteger(parsedMonth) &&
+      parsedMonth >= 1 &&
+      parsedMonth <= 12
+    ) {
+      targetParts = {
+        year: parsedYear,
+        monthIndex: parsedMonth - 1,
+      };
+    } else {
+      targetParts = getBangkokYearMonth(now);
+    }
+
+    const startOfTargetMonth = createBangkokMonthStartDate(
+      targetParts.year,
+      targetParts.monthIndex
+    );
+    const startOfNextMonth = createBangkokMonthStartDate(
+      targetParts.year,
+      targetParts.monthIndex + 1
+    );
 
     const rows = await dbClient
       .select({
@@ -666,8 +776,8 @@ router.get("/products/top-sellers", async (_req, res, next) => {
       .innerJoin(products, eq(order_items.product_id, products.id))
       .where(
         and(
-          gte(orders.order_date, start),
-          lt(orders.order_date, end),
+          gte(orders.order_date, startOfTargetMonth),
+          lt(orders.order_date, startOfNextMonth),
           inArray(orders.status, completedOrderStatuses)
         )
       )
@@ -693,8 +803,8 @@ router.get("/products/top-sellers", async (_req, res, next) => {
 
     res.json({
       range: {
-        start: start.toISOString(),
-        end: end.toISOString(),
+        start: startOfTargetMonth.toISOString(),
+        end: startOfNextMonth.toISOString(),
       },
       products: productsByQuantity,
     });
