@@ -31,6 +31,55 @@ router.get(
     })
 );
 
+/* 🔍 GET — ค้นหาบิลด้วย keyword (order_number / customer / sale) */
+router.get(
+    "/search",
+    asyncHandler(async (req: Request, res: Response) => {
+        const keyword = String(req.query.keyword || "").trim();
+
+        const baseSelect = {
+            id: orders.id,
+            order_number: orders.order_number,
+            customer_name: sql`CONCAT(${customers.fname}, ' ', ${customers.lname})`.as("customer_name"),
+            sale_name: sql`COALESCE(CONCAT(${employee.fname}, ' ', ${employee.lname}), '-')`.as("sale_name"),
+            order_date: orders.order_date,
+            total_amount: orders.total_amount,
+            bill: orders.bill,
+            status: orders.status,
+            note: orders.note,
+        };
+
+        // ถ้าไม่พิมพ์ keyword คืนทั้งหมด
+        if (!keyword) {
+            const all = await dbClient
+                .select(baseSelect)
+                .from(orders)
+                .leftJoin(customers, eq(orders.customer_id, customers.id))
+                .leftJoin(employee, eq(orders.sale_id, employee.id))
+                .orderBy(desc(orders.order_date));
+
+            res.json({ success: true, data: all });
+        }
+
+        // 🔎 ค้นหา order_number / ชื่อลูกค้า / ชื่อพนักงานขาย
+        const invoices = await dbClient
+            .select(baseSelect)
+            .from(orders)
+            .leftJoin(customers, eq(orders.customer_id, customers.id))
+            .leftJoin(employee, eq(orders.sale_id, employee.id))
+            .where(
+                sql`
+          ${orders.order_number} LIKE ${'%' + keyword + '%'} OR
+          CONCAT(${customers.fname}, ' ', ${customers.lname}) LIKE ${'%' + keyword + '%'} OR
+          CONCAT(${employee.fname}, ' ', ${employee.lname}) LIKE ${'%' + keyword + '%'}
+        `
+            )
+            .orderBy(desc(orders.order_date));
+
+        res.json({ success: true, data: invoices });
+    })
+);
+
 /* 🟦 GET — ดึงรายละเอียดบิล (รวมสินค้าในบิลด้วย) */
 router.get(
     "/:id",
