@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "5",
-      "when": 1760191885316,
-      "tag": "0000_public_speed",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "5",
-      "when": 1760193911595,
-      "tag": "0001_noisy_mother_askani",
+      "when": 1760337322441,
+      "tag": "0000_left_barracuda",
       "breakpoints": true
     },
     {
