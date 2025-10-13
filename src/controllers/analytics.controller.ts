@@ -32,7 +32,7 @@ async function getMonthlyNetProfit({ start, end }: MonthRange) {
       and(
         gte(orders.order_date, start),
         lt(orders.order_date, end),
-        inArray(orders.status, completedOrderStatuses)
+        inArray(orders.order_status, completedOrderStatuses)
       )
     );
 
@@ -146,7 +146,7 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
       and(
         gte(stock_in.received_date, start),
         lt(stock_in.received_date, end),
-        inArray(stock_in.status, receivedStockInStatuses)
+        inArray(stock_in.stock_in_status, receivedStockInStatuses)
       )
     )
     .groupBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`)
@@ -205,7 +205,7 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
         and(
           gte(orders.order_date, start),
           lt(orders.order_date, end),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(sql`YEAR(${orders.order_date})`, sql`MONTH(${orders.order_date})`)
@@ -349,7 +349,7 @@ router.get("/sales/by-employee", async (_req, res, next) => {
           eq(orders.sale_id, employee.id),
           gte(orders.order_date, startOfMonth),
           lt(orders.order_date, startOfNextMonth),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(employee.id, employee.fname, employee.lname);
@@ -452,7 +452,7 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
         and(
           gte(orders.order_date, startOfTargetMonth),
           lt(orders.order_date, startOfNextMonth),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(customers.id, customers.fname, customers.lname)
@@ -502,7 +502,7 @@ router.get("/company/top-order-value", async (_req, res, next) => {
         and(
           gte(orders.order_date, start),
           lt(orders.order_date, end),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(products.company)
@@ -778,7 +778,7 @@ router.get("/products/top-sellers", async (req, res, next) => {
         and(
           gte(orders.order_date, startOfTargetMonth),
           lt(orders.order_date, startOfNextMonth),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(products.id, products.name, products.company)
@@ -813,7 +813,62 @@ router.get("/products/top-sellers", async (req, res, next) => {
   }
 });
 
-//todo
+router.get("/products/top-sellers-month", async (req, res, next) => {
+  try {
+    const now = new Date();
+    const { start: startOfCurrentMonth, end: startOfNextMonth } = getCurrentBangkokMonthRange(now);
+
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit.at(-1) : req.query.limit;
+    const parsedLimit =
+      typeof rawLimit === "string" ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : 5;
+
+    const rows = await dbClient
+      .select({
+        productId: products.id,
+        productName: products.name,
+        productImage: products.image,
+        totalSold: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0)`,
+      })
+      .from(order_items)
+      .innerJoin(orders, eq(order_items.order_id, orders.id))
+      .innerJoin(products, eq(order_items.product_id, products.id))
+      .where(
+        and(
+          gte(orders.order_date, startOfCurrentMonth),
+          lt(orders.order_date, startOfNextMonth),
+          inArray(orders.order_status, completedOrderStatuses)
+        )
+      )
+      .groupBy(products.id, products.name, products.image)
+      .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0) DESC`)
+      .limit(limit);
+
+    const productsBySales = rows.map((row, index) => {
+      const totalSold = Number(row.totalSold ?? 0);
+      const trimmedName = row.productName?.trim() || "ไม่ระบุสินค้า";
+
+      return {
+        rank: index + 1,
+        productId: row.productId,
+        productName: trimmedName,
+        image: row.productImage ?? null,
+        totalSold,
+      };
+    });
+
+    res.json({
+      range: {
+        start: startOfCurrentMonth.toISOString(),
+        end: startOfNextMonth.toISOString(),
+      },
+      limit,
+      products: productsBySales,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 
 export default router;

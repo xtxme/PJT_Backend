@@ -2,9 +2,16 @@
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
-    categories, suppliers, products, stock_in,
-    customers, employee, orders, order_items
-} from "./schema.js"; // <- ปรับ path ตามโปรเจกต์
+    categories,
+    suppliers,
+    products,
+    stock_in,
+    stock_in_batches,
+    customers,
+    employee,
+    orders,
+    order_items,
+} from "./schema.js";
 import { connectionConfig } from "./utils.js";
 import bcrypt from "bcrypt";
 
@@ -18,6 +25,7 @@ async function main() {
     await db.delete(order_items);
     await db.delete(orders);
     await db.delete(stock_in);
+    await db.delete(stock_in_batches);
     await db.delete(products);
     await db.delete(suppliers);
     await db.delete(customers);
@@ -52,7 +60,7 @@ async function main() {
             fname: "Owner",
             lname: "Ice",
             username: "owner",
-            status: "active",
+            employee_status: "active",
             tel: "081-123-4567",
             role: "owner",
             email: "owner@gmail.com",
@@ -63,7 +71,7 @@ async function main() {
             fname: "Sale",
             lname: "Morpor",
             username: "sale1",
-            status: "active",
+            employee_status: "active",
             tel: "081-222-3333",
             role: "sale",
             email: "sale1@gmail.com",
@@ -74,7 +82,7 @@ async function main() {
             fname: "Warehouse",
             lname: "Prae",
             username: "warehouse1",
-            status: "active",
+            employee_status: "active",
             tel: "081-222-3334",
             role: "warehouse",
             email: "warehouse1@gmail.com",
@@ -82,92 +90,123 @@ async function main() {
         }
     ]);
 
-    // ---- 5) products (FK -> categories.id) ----
-    await db.insert(products).values([
+    const productSeeds = [
         {
-            id: 1,
+            id: "prod-0001-x100",
             image: null,
             name: "Mirrorless X100",
             description: "กล้อง mirrorless ใช้งานอเนกประสงค์",
             category_id: 1,
-            unit: 1,
+            unit: "pcs",
             cost: "15000.00",
             sell: "19900.00",
-            profit: "4900.00",
             quantity: 10,
             quantity_pending: 0,
             company: "CM Brand",
-            status: "active",
+            product_status: "active",
         },
         {
-            id: 2,
+            id: "prod-0002-lens50",
             image: null,
             name: "Lens 50mm f1.8",
             description: "เลนส์ระยะมาตรฐาน",
             category_id: 2,
-            unit: 1,
+            unit: "pcs",
             cost: "3500.00",
             sell: "4990.00",
-            profit: "1490.00",
             quantity: 20,
             quantity_pending: 0,
             company: "BK Lens",
-            status: "active",
+            product_status: "active",
         },
         {
-            id: 3,
+            id: "prod-0003-tripod",
             image: null,
             name: "Tripod Carbon",
             description: "ขาตั้งคาร์บอน น้ำหนักเบา",
             category_id: 3,
-            unit: 1,
+            unit: "pcs",
             cost: "1800.00",
             sell: "2490.00",
-            profit: "690.00",
             quantity: 15,
             quantity_pending: 0,
             company: "AccWorks",
-            status: "active",
+            product_status: "active",
         },
-    ]);
+    ] satisfies typeof products.$inferInsert[];
 
-    // ---- 6) stock_in (FK -> products.id, suppliers.id) ----
-    await db.insert(stock_in).values([
+    // ---- 5) products (FK -> categories.id) ----
+    await db.insert(products).values(productSeeds);
+
+    const stockInBatchSeeds = [
         {
             id: 1,
-            product_id: 1,
-            quantity: 5,
             supplier_id: 1,
-            status: "completed",
+            expected_date: new Date("2025-01-05T00:00:00Z"),
+            batch_status: "completed",
             note: "ล็อตเปิดร้าน",
         },
         {
             id: 2,
-            product_id: 2,
-            quantity: 10,
             supplier_id: 2,
-            status: "completed",
+            expected_date: new Date("2025-01-10T00:00:00Z"),
+            batch_status: "completed",
+            note: "รีสต๊อกสินค้าประจำฤดูกาล",
+        },
+    ] satisfies typeof stock_in_batches.$inferInsert[];
+
+    await db.insert(stock_in_batches).values(stockInBatchSeeds);
+
+    const stockInSeeds = [
+        {
+            id: 1,
+            batch_id: 1,
+            product_id: productSeeds[0].id,
+            quantity: 5,
+            received_qty: 5,
+            supplier_id: 1,
+            unit_cost: "15000.00",
+            stock_in_status: "completed",
+            note: "ล็อตเปิดร้าน",
+            received_date: new Date("2025-01-06T00:00:00Z"),
+        },
+        {
+            id: 2,
+            batch_id: 2,
+            product_id: productSeeds[1].id,
+            quantity: 10,
+            received_qty: 10,
+            supplier_id: 2,
+            unit_cost: "3500.00",
+            stock_in_status: "completed",
             note: "รีสต๊อกเลนส์ 50mm",
+            received_date: new Date("2025-01-11T00:00:00Z"),
         },
         {
             id: 3,
-            product_id: 3,
+            batch_id: 2,
+            product_id: productSeeds[2].id,
             quantity: 5,
+            received_qty: 3,
             supplier_id: 1,
-            status: "some_received",
+            unit_cost: "1800.00",
+            stock_in_status: "some_received",
             note: "ยังค้างรับ 2 ชิ้น",
+            received_date: new Date("2025-01-12T00:00:00Z"),
         },
-    ]);
+    ] satisfies typeof stock_in.$inferInsert[];
 
-    // ---- 7) orders (FK -> employee.id, customers.id) ----
-    await db.insert(orders).values([
+    // ---- 6) stock_in (FK -> products.id, suppliers.id) ----
+    await db.insert(stock_in).values(stockInSeeds);
+
+    const orderSeeds = [
         {
             id: 1,
             sale_id: 2, // พนักงานขาย sale1
             order_number: "ORD-2025-0001",
             customer_id: 1, // Somchai
             total_amount: "24890.00",
-            status: "completed",
+            order_status: "completed",
             note: "ลูกค้าประจำ",
             bill: null,
         },
@@ -177,18 +216,21 @@ async function main() {
             order_number: "ORD-2025-0002",
             customer_id: 2, // Suda
             total_amount: "4990.00",
-            status: "completed",
+            order_status: "completed",
             note: null,
             bill: null,
         },
-    ]);
+    ] satisfies typeof orders.$inferInsert[];
+
+    // ---- 7) orders (FK -> employee.id, customers.id) ----
+    await db.insert(orders).values(orderSeeds);
 
     // ---- 8) order_items (FK -> orders.id, products.id) ----
     await db.insert(order_items).values([
         {
             id: 1,
             order_id: 1,
-            product_id: 1, // Mirrorless X100
+            product_id: productSeeds[0].id, // Mirrorless X100
             quantity: 1,
             unit_price: "19900.00",
             total_price: "19900.00",
@@ -196,7 +238,7 @@ async function main() {
         {
             id: 2,
             order_id: 1,
-            product_id: 3, // Tripod
+            product_id: productSeeds[2].id, // Tripod
             quantity: 2,
             unit_price: "2490.00",
             total_price: "4980.00",
@@ -204,7 +246,7 @@ async function main() {
         {
             id: 3,
             order_id: 2,
-            product_id: 2, // Lens 50mm
+            product_id: productSeeds[1].id, // Lens 50mm
             quantity: 1,
             unit_price: "4990.00",
             total_price: "4990.00",

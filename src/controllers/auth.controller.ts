@@ -7,27 +7,36 @@ import { dbClient } from "@db/client.js";
 
 // POST /auth/login
 export const login: RequestHandler = async (req, res, next): Promise<void> => {
-    try {
-        const { email, password } = req.body as { email: string; password: string };
+  try {
+    const { email, password } = req.body as { email: string; password: string };
 
-        const dbUser: any = await getUserByEmail(email);
-        if (!dbUser) {
-            res.status(401).json({ error: "Invalid credentials" });
-            return;
-        }
-
-        const ok = await verifyPassword(password, dbUser.password);
-        if (!ok) {
-            res.status(401).json({ error: "Invalid credentials" });
-            return;
-        }
-
-        res.json({ redirect: buildRedirectUrl(dbUser.role) });
-        return;
-    } catch (err) {
-        next(err);
+    const dbUser: any = await getUserByEmail(email);
+    if (!dbUser) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
     }
+
+    const ok = await verifyPassword(password, dbUser.password);
+    if (!ok) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+
+    // สร้าง URL ให้สะอาด: กัน "//"
+    const redirect = normalizeRedirect(buildRedirectUrl(dbUser.role));
+
+    // ✅ ส่ง role กลับด้วย
+    res.json({ redirect, role: dbUser.role });
+    return;
+  } catch (err) {
+    next(err);
+  }
 };
+
+// กัน redirect กลายเป็น "//owner"
+function normalizeRedirect(url: string) {
+  return url.replace(/([^:])\/{2,}/g, "$1/"); // ไม่แตะ "http://", แต่ลด '//' ส่วนอื่นให้เหลือ '/'
+}
 
 // GET /auth/google/callback
 export const googleCallback: RequestHandler = async (req, res, next): Promise<void> => {

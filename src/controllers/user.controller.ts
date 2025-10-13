@@ -14,9 +14,18 @@ const roleAccessSelect = {
   email: employee.email,
   tel: employee.tel,
   role: employee.role,
-  status: employee.status,
+  status: employee.employee_status,
   createdAt: employee.created_at,
   updatedAt: employee.updated_at,
+};
+
+const normalizeEmployeeStatus = (value: unknown): "active" | "inactive" => {
+  if (typeof value !== "string") {
+    return "active";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === "inactive" ? "inactive" : "active";
 };
 
 router.get("/", async (_req, res, next) => {
@@ -41,7 +50,7 @@ router.post("/", async (req, res, next) => {
       email,
       tel,
       role,
-      status = "Active",
+      status = "active",
       password,
     } = req.body ?? {};
 
@@ -59,7 +68,7 @@ router.post("/", async (req, res, next) => {
       email,
       tel,
       role,
-      status,
+      employee_status: normalizeEmployeeStatus(status),
       password: hashedPassword,
     });
 
@@ -104,7 +113,9 @@ router.patch("/:id", async (req, res, next) => {
     if (typeof email !== "undefined") updatePayload.email = email;
     if (typeof tel !== "undefined") updatePayload.tel = tel;
     if (typeof role !== "undefined") updatePayload.role = role;
-    if (typeof status !== "undefined") updatePayload.status = status;
+    if (typeof status !== "undefined") {
+      updatePayload.employee_status = normalizeEmployeeStatus(status);
+    }
 
     if (typeof password === "string" && password.trim().length > 0) {
       updatePayload.password = await bcrypt.hash(password, 10);

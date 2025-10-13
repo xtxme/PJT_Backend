@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "6a4d77f9-3b04-4640-b24a-4298e29f30d9",
+  "id": "9aec98e8-61cc-43d1-abc1-3b95cc777dcb",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "categories": {
@@ -138,11 +138,11 @@
           "name": "username",
           "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
+        "employee_status": {
+          "name": "employee_status",
           "type": "enum('active','inactive')",
           "primaryKey": false,
           "notNull": true,
@@ -158,17 +158,17 @@
         },
         "role": {
           "name": "role",
-          "type": "enum('owner','warehouse_staff','sales')",
+          "type": "enum('owner','warehouse','sale')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": "'sales'"
+          "default": "'sale'"
         },
         "email": {
           "name": "email",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
         "password": {
@@ -180,19 +180,18 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())"
+          "default": "CURRENT_TIMESTAMP"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false,
-          "onUpdate": true
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -242,7 +241,7 @@
         },
         "product_id": {
           "name": "product_id",
-          "type": "int unsigned",
+          "type": "varchar(36)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -361,11 +360,11 @@
         },
         "order_date": {
           "name": "order_date",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false,
-          "default": "(now())"
+          "default": "CURRENT_TIMESTAMP"
         },
         "total_amount": {
           "name": "total_amount",
@@ -375,8 +374,8 @@
           "autoincrement": false,
           "default": "'0.00'"
         },
-        "status": {
-          "name": "status",
+        "order_status": {
+          "name": "order_status",
           "type": "enum('completed','canceled')",
           "primaryKey": false,
           "notNull": true,
@@ -399,19 +398,18 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())"
+          "default": "CURRENT_TIMESTAMP"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false,
-          "onUpdate": true
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -481,10 +479,10 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "int unsigned",
+          "type": "varchar(36)",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": true
+          "autoincrement": false
         },
         "image": {
           "name": "image",
@@ -516,7 +514,7 @@
         },
         "unit": {
           "name": "unit",
-          "type": "int unsigned",
+          "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -525,22 +523,28 @@
           "name": "cost",
           "type": "decimal(10,2)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'0.00'"
         },
         "sell": {
           "name": "sell",
           "type": "decimal(10,2)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'0.00'"
         },
         "profit": {
           "name": "profit",
           "type": "decimal(10,2)",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false
+          "autoincrement": false,
+          "generated": {
+            "as": "(sell - cost)",
+            "type": "stored"
+          }
         },
         "quantity": {
           "name": "quantity",
@@ -549,6 +553,28 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "counted_qty": {
+          "name": "counted_qty",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_counted_at": {
+          "name": "last_counted_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "count_note": {
+          "name": "count_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "quantity_pending": {
           "name": "quantity_pending",
@@ -565,8 +591,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
+        "product_status": {
+          "name": "product_status",
           "type": "enum('active','low_stock','restock_pending','pricing_pending')",
           "primaryKey": false,
           "notNull": true,
@@ -575,19 +601,18 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())"
+          "default": "CURRENT_TIMESTAMP"
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false,
-          "onUpdate": true
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -602,6 +627,13 @@
           "name": "idx_products_name",
           "columns": [
             "name"
+          ],
+          "isUnique": false
+        },
+        "idx_products_counted_at": {
+          "name": "idx_products_counted_at",
+          "columns": [
+            "last_counted_at"
           ],
           "isUnique": false
         }
@@ -642,9 +674,16 @@
           "notNull": true,
           "autoincrement": true
         },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "product_id": {
           "name": "product_id",
-          "type": "int unsigned",
+          "type": "varchar(36)",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -657,13 +696,28 @@
           "autoincrement": false,
           "default": 0
         },
+        "received_qty": {
+          "name": "received_qty",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "unit_cost": {
+          "name": "unit_cost",
+          "type": "decimal(10,2)",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'0.00'"
+        },
         "received_date": {
           "name": "received_date",
-          "type": "timestamp",
+          "type": "datetime",
           "primaryKey": false,
           "notNull": false,
-          "autoincrement": false,
-          "default": "(now())"
+          "autoincrement": false
         },
         "supplier_id": {
           "name": "supplier_id",
@@ -672,8 +726,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "status": {
-          "name": "status",
+        "stock_in_status": {
+          "name": "stock_in_status",
           "type": "enum('pending','some_received','completed','canceled')",
           "primaryKey": false,
           "notNull": true,
@@ -689,6 +743,13 @@
         }
       },
       "indexes": {
+        "idx_stockin_batch": {
+          "name": "idx_stockin_batch",
+          "columns": [
+            "batch_id"
+          ],
+          "isUnique": false
+        },
         "idx_stockin_product": {
           "name": "idx_stockin_product",
           "columns": [
@@ -705,6 +766,19 @@
         }
       },
       "foreignKeys": {
+        "stock_in_batch_id_stock_in_batches_id_fk": {
+          "name": "stock_in_batch_id_stock_in_batches_id_fk",
+          "tableFrom": "stock_in",
+          "tableTo": "stock_in_batches",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "cascade"
+        },
         "stock_in_product_id_products_id_fk": {
           "name": "stock_in_product_id_products_id_fk",
           "tableFrom": "stock_in",
@@ -735,6 +809,103 @@
       "compositePrimaryKeys": {
         "stock_in_id": {
           "name": "stock_in_id",
+          "columns": [
+            "id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraint": {}
+    },
+    "stock_in_batches": {
+      "name": "stock_in_batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "supplier_id": {
+          "name": "supplier_id",
+          "type": "int unsigned",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expected_date": {
+          "name": "expected_date",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "batch_status": {
+          "name": "batch_status",
+          "type": "enum('pending','some_received','completed','canceled')",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'pending'"
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "datetime",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_stockin_batches_supplier": {
+          "name": "idx_stockin_batches_supplier",
+          "columns": [
+            "supplier_id"
+          ],
+          "isUnique": false
+        },
+        "idx_stockin_batches_status": {
+          "name": "idx_stockin_batches_status",
+          "columns": [
+            "batch_status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "stock_in_batches_supplier_id_suppliers_id_fk": {
+          "name": "stock_in_batches_supplier_id_suppliers_id_fk",
+          "tableFrom": "stock_in_batches",
+          "tableTo": "suppliers",
+          "columnsFrom": [
+            "supplier_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        }
+      },
+      "compositePrimaryKeys": {
+        "stock_in_batches_id": {
+          "name": "stock_in_batches_id",
           "columns": [
             "id"
           ]
