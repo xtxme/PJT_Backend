@@ -6,10 +6,10 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 
 const router = Router();
 
-// 🟩 GET: ดึงลูกค้าพร้อมยอดรวม
+/* 🟩 GET: ดึงลูกค้าพร้อมยอดรวมเฉพาะ order ที่ completed */
 router.get(
     "/",
-    asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
+    asyncHandler(async (_req: Request, res: Response, _next: NextFunction) => {
         const result = await dbClient
             .select({
                 id: customers.id,
@@ -17,33 +17,51 @@ router.get(
                 address: sql`MIN(${customers.address})`,
                 email: sql`MIN(${customers.email})`,
                 tel: sql`MIN(${customers.tel})`,
-                totalPaid: sql`COALESCE(SUM(${orders.total_amount}), 0)`,
+                totalPaid: sql`
+          COALESCE(SUM(
+            CASE 
+              WHEN ${orders.status} = 'completed' 
+              THEN ${orders.total_amount} 
+              ELSE 0 
+            END
+          ), 0)
+        `,
             })
             .from(customers)
             .leftJoin(orders, eq(customers.id, orders.customer_id))
             .groupBy(customers.id);
 
-
         res.json({ success: true, data: result });
     })
 );
 
-// 🟨 GET /sale/customers/search?keyword=<name>
+/* 🟨 GET /sale/customers/search?keyword=<name> */
 router.get(
     "/search",
     asyncHandler(async (req: Request, res: Response) => {
         const keyword = String(req.query.keyword || "").trim();
+
+        const baseSelect = {
+            id: customers.id,
+            name: sql`CONCAT(${customers.fname}, ' ', ${customers.lname})`,
+            address: customers.address,
+            email: customers.email,
+            tel: customers.tel,
+            totalPaid: sql`
+        COALESCE(SUM(
+          CASE 
+            WHEN ${orders.status} = 'completed' 
+            THEN ${orders.total_amount} 
+            ELSE 0 
+          END
+        ), 0)
+      `,
+        };
+
+        // ถ้าไม่ใส่ keyword — แสดงทั้งหมด
         if (!keyword) {
-            // ถ้าไม่พิมพ์อะไรเลย -> คืนทั้งหมด
             const all = await dbClient
-                .select({
-                    id: customers.id,
-                    name: sql`CONCAT(${customers.fname}, ' ', ${customers.lname})`,
-                    address: customers.address,
-                    email: customers.email,
-                    tel: customers.tel,
-                    totalPaid: sql`COALESCE(SUM(${orders.total_amount}), 0)`,
-                })
+                .select(baseSelect)
                 .from(customers)
                 .leftJoin(orders, eq(customers.id, orders.customer_id))
                 .groupBy(customers.id)
@@ -52,15 +70,9 @@ router.get(
             res.json({ success: true, data: all });
         }
 
+        // ถ้ามี keyword — ค้นหาเฉพาะชื่อ อีเมล หรือเบอร์
         const result = await dbClient
-            .select({
-                id: customers.id,
-                name: sql`CONCAT(${customers.fname}, ' ', ${customers.lname})`,
-                address: customers.address,
-                email: customers.email,
-                tel: customers.tel,
-                totalPaid: sql`COALESCE(SUM(${orders.total_amount}), 0)`,
-            })
+            .select(baseSelect)
             .from(customers)
             .leftJoin(orders, eq(customers.id, orders.customer_id))
             .where(
@@ -75,8 +87,7 @@ router.get(
     })
 );
 
-
-// 🟦 POST: เพิ่มลูกค้าใหม่
+/* 🟦 POST: เพิ่มลูกค้าใหม่ */
 router.post(
     "/",
     asyncHandler(async (req: Request, res: Response) => {
@@ -94,7 +105,7 @@ router.post(
 
         const newCustomerId = inserted.id;
 
-        // ✅ ถ้ามี totalPaid ให้บันทึกออเดอร์แรก
+        // ✅ ถ้ามี totalPaid ให้สร้างบิล completed แรก
         if (Number(totalPaid) > 0) {
             await dbClient.insert(orders).values({
                 customer_id: newCustomerId,
@@ -104,7 +115,7 @@ router.post(
             });
         }
 
-        // ✅ ดึงลูกค้าใหม่พร้อม totalPaid จากฐานข้อมูลจริง
+        // ✅ ดึงลูกค้าใหม่พร้อมยอดรวมเฉพาะ completed
         const [newCustomer] = await dbClient
             .select({
                 id: customers.id,
@@ -112,7 +123,15 @@ router.post(
                 address: customers.address,
                 email: customers.email,
                 tel: customers.tel,
-                totalPaid: sql`COALESCE(SUM(${orders.total_amount}), ${totalPaid || 0})`,
+                totalPaid: sql`
+          COALESCE(SUM(
+            CASE 
+              WHEN ${orders.status} = 'completed' 
+              THEN ${orders.total_amount} 
+              ELSE 0 
+            END
+          ), ${totalPaid || 0})
+        `,
             })
             .from(customers)
             .leftJoin(orders, eq(customers.id, orders.customer_id))
@@ -135,6 +154,7 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
             .set({ fname, lname, address, email, tel })
             .where(eq(customers.id, id));
 
+        // ✅ รวมยอดเฉพาะ completed
         const [updated] = await dbClient
             .select({
                 id: customers.id,
@@ -142,10 +162,20 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
                 address: customers.address,
                 email: customers.email,
                 tel: customers.tel,
-                totalPaid: sql`${totalPaid || 0}`,
+                totalPaid: sql`
+          COALESCE(SUM(
+            CASE 
+              WHEN ${orders.status} = 'completed' 
+              THEN ${orders.total_amount} 
+              ELSE 0 
+            END
+          ), ${totalPaid || 0})
+        `,
             })
             .from(customers)
-            .where(eq(customers.id, id));
+            .leftJoin(orders, eq(customers.id, orders.customer_id))
+            .where(eq(customers.id, id))
+            .groupBy(customers.id);
 
         res.json({ success: true, data: updated });
     } catch (err) {

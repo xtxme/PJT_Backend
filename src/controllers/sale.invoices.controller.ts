@@ -138,28 +138,84 @@ router.put(
     asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
         try {
             const id = Number(req.params.id);
-            await dbClient.update(orders).set({ status: "canceled" }).where(eq(orders.id, id));
 
+            // 🧾 1) ดึงข้อมูลบิลและรายการสินค้า
+            const [invoice] = await dbClient
+                .select({
+                    id: orders.id,
+                    total_amount: orders.total_amount,
+                    customer_id: orders.customer_id,
+                })
+                .from(orders)
+                .where(eq(orders.id, id));
+
+            if (!invoice) {
+                res.status(404).json({ success: false, message: "ไม่พบบิลนี้" });
+            }
+
+            // ❗ 2) ตรวจว่าบิลนี้ถูกยกเลิกไปแล้วหรือยัง
+            const [currentStatus] = await dbClient
+                .select({ status: orders.status })
+                .from(orders)
+                .where(eq(orders.id, id));
+
+            if (currentStatus?.status === "canceled") {
+                res.json({ success: false, message: "บิลนี้ถูกยกเลิกแล้ว" });
+            }
+
+            // 🧮 3) ดึงรายการสินค้าในบิล
+            const orderItems = await dbClient
+                .select({
+                    product_id: order_items.product_id,
+                    quantity: order_items.quantity,
+                })
+                .from(order_items)
+                .where(eq(order_items.order_id, id));
+
+            // 🛠️ 4) อัปเดตจำนวนสินค้าให้กลับเข้าสต็อก
+            for (const item of orderItems) {
+                await dbClient
+                    .update(products)
+                    .set({
+                        quantity: sql`${products.quantity} + ${item.quantity}`,
+                    })
+                    .where(eq(products.id, item.product_id));
+            }
+
+            // 🧾 5) เปลี่ยนสถานะบิลเป็น canceled
+            await dbClient
+                .update(orders)
+                .set({ status: "canceled" })
+                .where(eq(orders.id, id));
+
+            // 💳 6) อัปเดตยอดรวมลูกค้า (recalculate)
+            const [newTotal] = await dbClient
+                .select({
+                    total: sql`COALESCE(SUM(${orders.total_amount}), 0)`,
+                })
+                .from(orders)
+                .where(
+                    sql`${orders.customer_id} = ${invoice.customer_id} AND ${orders.status} = 'completed'`
+                );
+
+            // (กรณีคุณมีฟิลด์ totalPaid ใน customers)
+            // await dbClient.update(customers).set({ totalPaid: newTotal.total }).where(eq(customers.id, invoice.customer_id));
+
+            // 📦 7) ดึงข้อมูลล่าสุดเพื่อตอบกลับ frontend
             const [updated] = await dbClient
                 .select({
                     id: orders.id,
                     order_number: orders.order_number,
-                    customer_name: sql`CONCAT(${customers.fname}, ' ', ${customers.lname})`.as("customer_name"),
-                    sale_name: sql`COALESCE(CONCAT(${employee.fname}, ' ', ${employee.lname}), '-')`.as("sale_name"),
-                    order_date: orders.order_date,
-                    total_amount: orders.total_amount,
-                    bill: orders.bill,
                     status: orders.status,
-                    note: orders.note,
+                    total_amount: orders.total_amount,
+                    order_date: orders.order_date,
                 })
                 .from(orders)
-                .leftJoin(customers, eq(orders.customer_id, customers.id))
-                .leftJoin(employee, eq(orders.sale_id, employee.id))
                 .where(eq(orders.id, id));
 
             res.json({
                 success: true,
-                message: `ยกเลิกบิลหมายเลข ${id} สำเร็จแล้ว ✅`,
+                message: `✅ ยกเลิกบิลเลขที่ ${updated.id} เรียบร้อย`,
                 data: updated,
             });
         } catch (err) {
@@ -168,6 +224,7 @@ router.put(
         }
     })
 );
+
 
 /* 💰 GET — สรุปยอดรวมเฉพาะ completed */
 router.get(
