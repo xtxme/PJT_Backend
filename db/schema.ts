@@ -77,7 +77,10 @@ export const products = mysqlTable(
         // จำนวนที่สั่งไว้แต่ยังไม่เข้า
         quantity_pending: int("quantity_pending", { unsigned: true }).notNull().default(0),
 
-        company: varchar("company", { length: 255 }),
+        supplier_id: int("supplier_id", { unsigned: true }).references(
+            () => suppliers.id,
+            { onDelete: "set null", onUpdate: "cascade" }
+        ),
 
         product_status: mysqlEnum("product_status", [
             "active", "low_stock", "restock_pending", "pricing_pending",

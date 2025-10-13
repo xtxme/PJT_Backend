@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "6d376e0f-6bd2-4c75-a249-993f4855e6ed",
+  "id": "41b19dd6-c921-47ba-900b-fc25428832f3",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "categories": {
@@ -584,9 +584,9 @@
           "autoincrement": false,
           "default": 0
         },
-        "company": {
-          "name": "company",
-          "type": "varchar(255)",
+        "supplier_id": {
+          "name": "supplier_id",
+          "type": "int unsigned",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -645,6 +645,19 @@
           "tableTo": "categories",
           "columnsFrom": [
             "category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "cascade"
+        },
+        "products_supplier_id_suppliers_id_fk": {
+          "name": "products_supplier_id_suppliers_id_fk",
+          "tableFrom": "products",
+          "tableTo": "suppliers",
+          "columnsFrom": [
+            "supplier_id"
           ],
           "columnsTo": [
             "id"

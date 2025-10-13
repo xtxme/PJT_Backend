@@ -94,16 +94,24 @@ router.get("/products/low-stock", async (req, res, next) => {
         if (statusValues.length) nConds.push(inArray(products.product_status, statusValues));
         if (nConds.length) conds.push(match === "all" ? and(...nConds) : or(...nConds));
 
+        // 🔍 search
         if (q && String(q).trim()) {
             const likeQ = `%${String(q).trim()}%`;
-            conds.push(or(like(products.name, likeQ), like(products.company, likeQ)));
+            conds.push(
+                or(
+                    like(products.name, likeQ),
+                    like(suppliers.company_name, likeQ) // ✅ ค้นจากชื่อ supplier
+                )
+            );
         }
+
         if (category_id) {
             conds.push(eq(products.category_id, toInt(category_id)));
         }
 
         const orderBy = parseSort(String(req.query.sort || "")) ?? asc(products.name);
 
+        // ✅ join suppliers เพื่อดึงชื่อบริษัท
         const [rows, [{ total }]] = await Promise.all([
             dbClient
                 .select({
@@ -116,17 +124,21 @@ router.get("/products/low-stock", async (req, res, next) => {
                     sell: products.sell,
                     product_status: products.product_status,
                     category_id: products.category_id,
-                    company: products.company,
+                    supplier_id: products.supplier_id,
+                    supplier_name: suppliers.company_name, // ✅ แทน company
                     updated_at: products.updated_at,
                 })
                 .from(products)
+                .leftJoin(suppliers, eq(products.supplier_id, suppliers.id))
                 .where(conds.length ? and(...conds) : undefined)
                 .orderBy(orderBy)
                 .limit(limit)
                 .offset(offset),
+
             dbClient
                 .select({ total: sql<number>`COUNT(*)` })
                 .from(products)
+                .leftJoin(suppliers, eq(products.supplier_id, suppliers.id))
                 .where(conds.length ? and(...conds) : undefined),
         ]);
 
@@ -186,12 +198,29 @@ router.post("/products", async (req, res, next) => {
             unit,
             cost,
             sell,
-            company,
+            supplier_id,
             image,
         } = req.body || {};
 
         if (!name || !String(name).trim()) {
             return res.status(400).json({ message: "ต้องระบุชื่อสินค้า" });
+        }
+
+        let supId: number | null = null;
+        if (supplier_id != null) {
+            const sId = Number(supplier_id);
+            if (!Number.isFinite(sId) || sId <= 0) {
+                return res.status(400).json({ message: "Invalid supplier_id" });
+            }
+            const [exists] = await dbClient
+                .select({ c: sql<number>`COUNT(*)`.mapWith(Number) })
+                .from(suppliers)
+                .where(eq(suppliers.id, sId))
+                .limit(1);
+            if (!exists || !exists.c) {
+                return res.status(404).json({ message: "Supplier not found" });
+            }
+            supId = sId;
         }
 
         const data = {
@@ -202,7 +231,7 @@ router.post("/products", async (req, res, next) => {
             unit: unit ? String(unit).trim() : null,
             cost: cost != null ? String(Number(cost).toFixed(2)) : "0.00",
             sell: sell != null ? String(Number(sell).toFixed(2)) : "0.00",
-            company: company ? String(company).trim() : null,
+            supplier_id: supId,
             image: image ? String(image).trim() : null,
         };
 
@@ -228,14 +257,17 @@ router.get("/products", async (_req, res, next) => {
             .select({
                 id: products.id,
                 name: products.name,
+                image: products.image,
                 quantity: products.quantity,
                 quantity_pending: products.quantity_pending,
                 cost: products.cost,
                 sell: products.sell,
                 product_status: products.product_status,
                 created_at: products.created_at,
+                company: suppliers.company_name,
             })
             .from(products)
+            .leftJoin(suppliers, eq(products.supplier_id, suppliers.id))
             .orderBy(asc(products.name));
 
         res.json(rows);
@@ -246,10 +278,10 @@ router.get("/products", async (_req, res, next) => {
 
 router.patch("/products/:id/cost", async (req, res, next) => {
     try {
-        const id = Number(req.params.id);
-        const { cost } = req.body ?? {};
+        const id = String(req.params.id ?? "").trim();
+        const { cost, supplier_id } = req.body ?? {};
 
-        if (!Number.isFinite(id) || id <= 0) {
+        if (!id) {
             return res.status(400).json({ message: "Invalid product id" });
         }
         const numCost = Number(cost);
@@ -257,45 +289,101 @@ router.patch("/products/:id/cost", async (req, res, next) => {
             return res.status(400).json({ message: "Invalid cost" });
         }
 
-        const costStr = Number(numCost).toFixed(2); // ปรับ scale ให้ตรงกับคอลัมน์
+        // ถ้ามี supplier_id ให้ตรวจสอบความถูกต้อง (optional แต่แนะนำ)
+        let supId: number | null = null;
+        if (supplier_id != null) {
+            const sId = Number(supplier_id);
+            if (!Number.isFinite(sId) || sId <= 0) {
+                return res.status(400).json({ message: "Invalid supplier_id" });
+            }
+            const [exists] = await dbClient
+                .select({ c: sql<number>`COUNT(*)`.mapWith(Number) })
+                .from(suppliers)
+                .where(eq(suppliers.id, sId))
+                .limit(1);
+            if (!exists || !exists.c) {
+                return res.status(404).json({ message: "Supplier not found" });
+            }
+            supId = sId;
+        }
+
+        const costStr = Number(numCost).toFixed(2);
         await dbClient
             .update(products)
-            .set({ cost: costStr, updated_at: new Date() })
-            .where(eq(products.id, String(id)));
+            .set({
+                cost: costStr,
+                ...(supId ? { supplier_id: supId } : {}),
+                updated_at: new Date(),
+            })
+            .where(eq(products.id, id)); // ✅ ใช้ number ตรง type
 
-        // drizzle mysql จะคืนค่าจำนวนแถวผ่าน driver; ถ้าอยากเข้ม ให้ select กลับมาตรวจซ้ำก็ได้
-        return res.json({ ok: true, product_id: id, cost: numCost });
+        return res.json({ ok: true, product_id: id, cost: numCost, supplier_id: supId ?? null });
     } catch (e) {
         next(e);
     }
 });
 
+
 /** อัปเดตต้นทุนแบบ bulk: [{product_id, cost}] */
+/** อัปเดตต้นทุนแบบ bulk: { supplier_id?, items: [{ product_id, cost, supplier_id? }] } */
+/** body: { supplier_id?: number, items: Array<{ product_id: string, cost: number, supplier_id?: number | null }> } */
 router.post("/products/cost-bulk", async (req, res, next) => {
     try {
-        const items: Array<{ product_id: number; cost: number }> = Array.isArray(req.body?.items) ? req.body.items : [];
-        if (items.length === 0) {
-            return res.status(400).json({ message: "No items" });
-        }
+        const body = req.body ?? {};
+        const topSupplierIdRaw = body.supplier_id;
+        const items: Array<{ product_id: string; cost: number; supplier_id?: number | null }> =
+            Array.isArray(body.items) ? body.items : [];
 
-        // ตรวจความถูกต้องเบื้องต้น
+        if (items.length === 0) return res.status(400).json({ message: "No items" });
+
         for (const it of items) {
-            if (!Number.isFinite(it.product_id) || it.product_id <= 0) {
-                return res.status(400).json({ message: `Invalid product_id: ${it.product_id}` });
-            }
+            const pid = String(it.product_id ?? "").trim();            // ✅ string
+            if (!pid) return res.status(400).json({ message: "Invalid product_id: empty" });
             if (!Number.isFinite(it.cost) || it.cost < 0) {
-                return res.status(400).json({ message: `Invalid cost for product ${it.product_id}` });
+                return res.status(400).json({ message: `Invalid cost for product ${pid}` });
             }
         }
 
-        // อัปเดตทีละรายการ (ง่าย/ชัดเจน)
+        const supplierIds = new Set<number>();
+        if (topSupplierIdRaw != null) {
+            const s = Number(topSupplierIdRaw);
+            if (!Number.isFinite(s) || s <= 0) return res.status(400).json({ message: "Invalid supplier_id" });
+            supplierIds.add(s);
+        }
         for (const it of items) {
-            const costStr = Number(it.cost).toFixed(2); // สมมติ scale = 2
-            const productId = String(it.product_id);
+            if (it.supplier_id != null) {
+                const s = Number(it.supplier_id);
+                if (!Number.isFinite(s) || s <= 0) {
+                    return res.status(400).json({ message: `Invalid supplier_id for product ${it.product_id}` });
+                }
+                supplierIds.add(s);
+            }
+        }
+
+        if (supplierIds.size > 0) {
+            const ids = Array.from(supplierIds);
+            const rows = await dbClient
+                .select({ id: suppliers.id })
+                .from(suppliers)
+                .where(inArray(suppliers.id, ids));
+            if (rows.length !== ids.length) return res.status(404).json({ message: "Some supplier(s) not found" });
+        }
+
+        for (const it of items) {
+            const pid = String(it.product_id).trim();                   // ✅ string
+            const costStr = Number(it.cost).toFixed(2);
+            const effectiveSupplierId =
+                it.supplier_id != null ? Number(it.supplier_id)
+                    : (topSupplierIdRaw != null ? Number(topSupplierIdRaw) : null);
+
             await dbClient
                 .update(products)
-                .set({ cost: costStr, updated_at: new Date() })
-                .where(eq(products.id, productId));
+                .set({
+                    cost: costStr,
+                    ...(effectiveSupplierId ? { supplier_id: effectiveSupplierId } : {}),
+                    updated_at: new Date(),
+                })
+                .where(eq(products.id, pid));                             // ✅ string
         }
 
         return res.json({ ok: true, updated: items.length });
@@ -303,6 +391,8 @@ router.post("/products/cost-bulk", async (req, res, next) => {
         next(e);
     }
 });
+
+
 
 router.post("/stock-check/adjust", async (req, res, next) => {
     try {
@@ -764,7 +854,7 @@ router.patch("/stock-in/items/:itemId", async (req, res, next) => {
             }
             if (newCost != null) {
                 if (!Number.isFinite(newCost)) throw new Error("unit_cost ไม่ถูกต้อง");
-                updates.unit_cost = newCost;
+                updates.unit_cost = Number(newCost).toFixed(2);   // ✅ string "12.34"
             }
             if (note !== undefined) updates.note = note ?? null;
 
