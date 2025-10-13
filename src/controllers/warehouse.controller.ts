@@ -91,16 +91,24 @@ router.get("/products/low-stock", async (req, res, next) => {
         if (statusValues.length) nConds.push(inArray(products.product_status, statusValues));
         if (nConds.length) conds.push(match === "all" ? and(...nConds) : or(...nConds));
 
+        // 🔍 search
         if (q && String(q).trim()) {
             const likeQ = `%${String(q).trim()}%`;
-            conds.push(or(like(products.name, likeQ), like(products.company, likeQ)));
+            conds.push(
+                or(
+                    like(products.name, likeQ),
+                    like(suppliers.company_name, likeQ) // ✅ ค้นจากชื่อ supplier
+                )
+            );
         }
+
         if (category_id) {
             conds.push(eq(products.category_id, toInt(category_id)));
         }
 
         const orderBy = parseSort(String(req.query.sort || "")) ?? asc(products.name);
 
+        // ✅ join suppliers เพื่อดึงชื่อบริษัท
         const [rows, [{ total }]] = await Promise.all([
             dbClient
                 .select({
@@ -113,17 +121,21 @@ router.get("/products/low-stock", async (req, res, next) => {
                     sell: products.sell,
                     product_status: products.product_status,
                     category_id: products.category_id,
-                    company: products.company,
+                    supplier_id: products.supplier_id,
+                    supplier_name: suppliers.company_name, // ✅ แทน company
                     updated_at: products.updated_at,
                 })
                 .from(products)
+                .leftJoin(suppliers, eq(products.supplier_id, suppliers.id))
                 .where(conds.length ? and(...conds) : undefined)
                 .orderBy(orderBy)
                 .limit(limit)
                 .offset(offset),
+
             dbClient
                 .select({ total: sql<number>`COUNT(*)` })
                 .from(products)
+                .leftJoin(suppliers, eq(products.supplier_id, suppliers.id))
                 .where(conds.length ? and(...conds) : undefined),
         ]);
 
@@ -183,12 +195,29 @@ router.post("/products", async (req, res, next) => {
             unit,
             cost,
             sell,
-            company,
+            supplier_id,
             image,
         } = req.body || {};
 
         if (!name || !String(name).trim()) {
             return res.status(400).json({ message: "ต้องระบุชื่อสินค้า" });
+        }
+
+        let supId: number | null = null;
+        if (supplier_id != null) {
+            const sId = Number(supplier_id);
+            if (!Number.isFinite(sId) || sId <= 0) {
+                return res.status(400).json({ message: "Invalid supplier_id" });
+            }
+            const [exists] = await dbClient
+                .select({ c: sql<number>`COUNT(*)`.mapWith(Number) })
+                .from(suppliers)
+                .where(eq(suppliers.id, sId))
+                .limit(1);
+            if (!exists || !exists.c) {
+                return res.status(404).json({ message: "Supplier not found" });
+            }
+            supId = sId;
         }
 
         const data = {
@@ -199,7 +228,7 @@ router.post("/products", async (req, res, next) => {
             unit: unit ? String(unit).trim() : null,
             cost: cost != null ? String(Number(cost).toFixed(2)) : "0.00",
             sell: sell != null ? String(Number(sell).toFixed(2)) : "0.00",
-            company: company ? String(company).trim() : null,
+            supplier_id: supId,
             image: image ? String(image).trim() : null,
         };
 
@@ -232,8 +261,10 @@ router.get("/products", async (_req, res, next) => {
                 sell: products.sell,
                 product_status: products.product_status,
                 created_at: products.created_at,
+                company: suppliers.company_name,
             })
             .from(products)
+            .leftJoin(suppliers, eq(products.supplier_id, suppliers.id))
             .orderBy(asc(products.name));
 
         res.json(rows);
@@ -820,7 +851,7 @@ router.patch("/stock-in/items/:itemId", async (req, res, next) => {
             }
             if (newCost != null) {
                 if (!Number.isFinite(newCost)) throw new Error("unit_cost ไม่ถูกต้อง");
-                updates.unit_cost = newCost;
+                updates.unit_cost = Number(newCost).toFixed(2);   // ✅ string "12.34"
             }
             if (note !== undefined) updates.note = note ?? null;
 
