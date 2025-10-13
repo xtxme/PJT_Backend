@@ -16,7 +16,6 @@ router.get("/stock", async (_req, res, next) => {
                 id: products.id,
                 image: products.image,
                 name: products.name,
-                company: products.company,
                 lastUpdate: products.last_counted_at,
                 systemQty: products.quantity,
                 latestQty: products.counted_qty,

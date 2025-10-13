@@ -1,3 +1,4 @@
+//seed
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
@@ -15,8 +16,8 @@ import {
 } from "./schema.js"; // ✅ ปรับ path ให้ตรงกับโปรเจกต์คุณ
 import { connectionConfig } from "./utils.js";
 import bcrypt from "bcrypt";
-const passwordHash = await bcrypt.hash("password123", 10);
 
+const passwordHash = await bcrypt.hash("password123", 10);
 async function main() {
     const connection = await mysql.createConnection(connectionConfig);
     const db = drizzle(connection);
@@ -139,7 +140,6 @@ async function main() {
             quantity_pending: 1,
             last_counted_at: new Date("2025-10-10T10:00:00"),
             count_note: "ของหาย 1 ตัว",
-            company: "ChiangMai Camera Co.",
             product_status: "active",
         },
         {
@@ -155,7 +155,6 @@ async function main() {
             counted_qty: 20,
             quantity_pending: 0,
             last_counted_at: new Date("2025-10-05T11:00:00"),
-            company: "Bangkok Lens Ltd.",
             product_status: "active",
         },
         {
@@ -172,7 +171,6 @@ async function main() {
             quantity_pending: 2,
             last_counted_at: new Date("2025-10-09T09:00:00"),
             count_note: "มีของค้างในโกดัง",
-            company: "ChiangMai Camera Co.",
             product_status: "restock_pending",
         },
     ]);

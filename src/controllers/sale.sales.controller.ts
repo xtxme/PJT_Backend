@@ -38,7 +38,7 @@ router.get(
                 status: products.product_status, // 👈 ปรับชื่อ field
             })
             .from(products)
-            .where(eq(products.product_status, "active"))
+            // .where(eq(products.product_status, "active"))
             .orderBy(products.id);
 
         res.json({ success: true, data: result });
@@ -160,7 +160,7 @@ router.post(
                     | "low_stock"
                     | "restock_pending"
                     | "pricing_pending" = "active";
-                if (remaining === 0) newStatus = "restock_pending";
+                if (remaining === 0) newStatus = "low_stock";
                 else if (remaining <= 10) newStatus = "low_stock";
 
                 // ✅ อัปเดตสถานะสินค้าใน DB
