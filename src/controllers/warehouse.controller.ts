@@ -233,6 +233,9 @@ router.post("/products", async (req, res, next) => {
             sell: sell != null ? String(Number(sell).toFixed(2)) : "0.00",
             supplier_id: supId,
             image: image ? String(image).trim() : null,
+
+            // 👇 ใส่ค่าเริ่มต้นที่นี่
+            product_status: 'low_stock' as const,
         };
 
         await dbClient.insert(products).values(data).execute();
@@ -244,6 +247,7 @@ router.post("/products", async (req, res, next) => {
             unit: data.unit,
             cost: data.cost,
             sell: data.sell,
+            product_status: data.product_status, // ส่งกลับด้วยก็ดี
         });
     } catch (e) {
         next(e);

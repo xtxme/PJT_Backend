@@ -10,6 +10,7 @@ CREATE TABLE `customers` (
 	`fname` varchar(100),
 	`lname` varchar(100),
 	`email` varchar(255),
+	`address` text,
 	`tel` varchar(50),
 	CONSTRAINT `customers_id` PRIMARY KEY(`id`)
 );
@@ -73,7 +74,7 @@ CREATE TABLE `products` (
 	`last_counted_at` datetime,
 	`count_note` text,
 	`quantity_pending` int unsigned NOT NULL DEFAULT 0,
-	`company` varchar(255),
+	`supplier_id` int unsigned,
 	`product_status` enum('active','low_stock','restock_pending','pricing_pending') NOT NULL DEFAULT 'active',
 	`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	`updated_at` datetime,
@@ -118,6 +119,7 @@ ALTER TABLE `order_items` ADD CONSTRAINT `order_items_product_id_products_id_fk`
 ALTER TABLE `orders` ADD CONSTRAINT `orders_sale_id_employee_id_fk` FOREIGN KEY (`sale_id`) REFERENCES `employee`(`id`) ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE `orders` ADD CONSTRAINT `orders_customer_id_customers_id_fk` FOREIGN KEY (`customer_id`) REFERENCES `customers`(`id`) ON DELETE restrict ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE `products` ADD CONSTRAINT `products_category_id_categories_id_fk` FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
+ALTER TABLE `products` ADD CONSTRAINT `products_supplier_id_suppliers_id_fk` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE `stock_in` ADD CONSTRAINT `stock_in_batch_id_stock_in_batches_id_fk` FOREIGN KEY (`batch_id`) REFERENCES `stock_in_batches`(`id`) ON DELETE cascade ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE `stock_in` ADD CONSTRAINT `stock_in_product_id_products_id_fk` FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE restrict ON UPDATE cascade;--> statement-breakpoint
 ALTER TABLE `stock_in` ADD CONSTRAINT `stock_in_supplier_id_suppliers_id_fk` FOREIGN KEY (`supplier_id`) REFERENCES `suppliers`(`id`) ON DELETE set null ON UPDATE cascade;--> statement-breakpoint
