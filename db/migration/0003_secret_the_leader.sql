@@ -1,1 +1,0 @@
-ALTER TABLE `orders` ADD CONSTRAINT `orders_sale_id_employee_id_fk` FOREIGN KEY (`sale_id`) REFERENCES `employee`(`id`) ON DELETE no action ON UPDATE no action;

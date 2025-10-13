@@ -6,6 +6,7 @@ import userRoutes from "./user.routes.js";
 import saleRoutes from "../controllers/sale.controller.js";
 import ownerRoutes from "../controllers/owner.controller.js";
 import warehouseRoutes from "../controllers/warehouse.controller.js";
+import inventoryRoutes from "./inventory.routes.js";
 
 const router = Router();
 
@@ -27,4 +28,5 @@ router.use("/owner", ownerRoutes);
 router.use("/sale", saleRoutes);
 router.use("/warehouse", warehouseRoutes);
 router.use("/role-access", userRoutes);
+router.use("/inventory", inventoryRoutes);
 export default router;

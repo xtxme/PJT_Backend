@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql, isNotNull } from "drizzle-orm";
 import { dbClient } from "@db/client.js";
-import { orders, order_items, products, stock_in, employee, customers } from "@db/schema.js";
+import { orders, order_items, products, stock_in, stock_in_batches, employee, customers, suppliers } from "@db/schema.js";
 
 const router = Router();
 
@@ -32,7 +32,7 @@ async function getMonthlyNetProfit({ start, end }: MonthRange) {
       and(
         gte(orders.order_date, start),
         lt(orders.order_date, end),
-        inArray(orders.status, completedOrderStatuses)
+        inArray(orders.order_status, completedOrderStatuses)
       )
     );
 
@@ -137,16 +137,18 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
     .select({
       year: sql<number>`YEAR(${stock_in.received_date})`,
       month: sql<number>`MONTH(${stock_in.received_date})`,
-      totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0)), 0)`,
-      totalValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.quantity}, 0) * COALESCE(${products.cost}, 0)), 0)`,
+      totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${stock_in.received_qty}, 0)), 0)`,
+      totalValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.received_qty}, 0) * COALESCE(${stock_in.unit_cost}, 0)), 0)`,
     })
     .from(stock_in)
-    .innerJoin(products, eq(stock_in.product_id, products.id))
+    .innerJoin(stock_in_batches, eq(stock_in.batch_id, stock_in_batches.id))
     .where(
       and(
+        isNotNull(stock_in.received_date),
         gte(stock_in.received_date, start),
         lt(stock_in.received_date, end),
-        inArray(stock_in.status, receivedStockInStatuses)
+        inArray(stock_in.stock_in_status, receivedStockInStatuses),
+        inArray(stock_in_batches.batch_status, receivedStockInStatuses)
       )
     )
     .groupBy(sql`YEAR(${stock_in.received_date})`, sql`MONTH(${stock_in.received_date})`)
@@ -188,7 +190,7 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
   return months;
 }
 
-//Sale Summary
+//กราฟแสดงภาพรวมยอดขาย
 router.get("/sales/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -205,7 +207,7 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
         and(
           gte(orders.order_date, start),
           lt(orders.order_date, end),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(sql`YEAR(${orders.order_date})`, sql`MONTH(${orders.order_date})`)
@@ -237,7 +239,7 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
   }
 });
 
-//Stock In Purchase Summary
+//กราฟสรุปยอดการรับสินค้าจากซัพพลายเออร์
 router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -251,7 +253,7 @@ router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   }
 });
 
-//Stock In Purchase Summary
+//สรุปยอดการรับสินค้าแบบตาราง
 router.get("/stock-in/summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -349,7 +351,7 @@ router.get("/sales/by-employee", async (_req, res, next) => {
           eq(orders.sale_id, employee.id),
           gte(orders.order_date, startOfMonth),
           lt(orders.order_date, startOfNextMonth),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(employee.id, employee.fname, employee.lname);
@@ -433,7 +435,7 @@ router.get("/profit/monthly-total", async (_req, res, next) => {
   }
 });
 
-//Highest Order Value by Customer
+//ลูกค้าที่มียอดสั่งซื้อสูงสุด
 router.get("/customers/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -452,7 +454,7 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
         and(
           gte(orders.order_date, startOfTargetMonth),
           lt(orders.order_date, startOfNextMonth),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
       .groupBy(customers.id, customers.fname, customers.lname)
@@ -484,7 +486,7 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
   }
 });
 
-//Highest Order Value by Company
+//สรุปยอดการสั่งซื้อจากซัพพลายเออร์
 router.get("/company/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -492,33 +494,36 @@ router.get("/company/top-order-value", async (_req, res, next) => {
 
     const rows = await dbClient
       .select({
-        company: products.company,
-        totalOrderValue: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${order_items.unit_price}, 0)), 0)`,
+        supplierId: suppliers.id,
+        companyName: suppliers.company_name,
+        totalPurchaseValue: sql<number>`COALESCE(SUM(COALESCE(${stock_in.received_qty}, 0) * COALESCE(${stock_in.unit_cost}, 0)), 0)`,
       })
-      .from(order_items)
-      .innerJoin(orders, eq(order_items.order_id, orders.id))
-      .innerJoin(products, eq(order_items.product_id, products.id))
+      .from(stock_in)
+      .innerJoin(stock_in_batches, eq(stock_in.batch_id, stock_in_batches.id))
+      .leftJoin(suppliers, eq(stock_in.supplier_id, suppliers.id))
       .where(
         and(
-          gte(orders.order_date, start),
-          lt(orders.order_date, end),
-          inArray(orders.status, completedOrderStatuses)
+          isNotNull(stock_in.received_date),
+          gte(stock_in.received_date, start),
+          lt(stock_in.received_date, end),
+          inArray(stock_in.stock_in_status, receivedStockInStatuses),
+          inArray(stock_in_batches.batch_status, receivedStockInStatuses)
         )
       )
-      .groupBy(products.company)
-      .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0) * COALESCE(${order_items.unit_price}, 0)), 0) DESC`)
+      .groupBy(suppliers.id, suppliers.company_name)
+      .orderBy(sql`COALESCE(SUM(COALESCE(${stock_in.received_qty}, 0) * COALESCE(${stock_in.unit_cost}, 0)), 0) DESC`)
       .limit(6);
 
     const companies = rows.map((row) => {
-      const totalOrderValue = Number(row.totalOrderValue ?? 0);
-      const name = row.company?.trim() || "ไม่ระบุบริษัท";
+      const totalValue = Number(row.totalPurchaseValue ?? 0);
+      const name = row.companyName?.trim() || "ไม่ระบุซัพพลายเออร์";
 
       return {
         company: name,
         name,
-        totalOrderValue,
-        totalAmount: totalOrderValue,
-        value: totalOrderValue,
+        totalOrderValue: totalValue,
+        totalAmount: totalValue,
+        value: totalValue,
       };
     });
 
@@ -534,7 +539,7 @@ router.get("/company/top-order-value", async (_req, res, next) => {
   }
 });
 
-//Dead Stock
+//สินค้าค้างสต็อก
 router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -542,7 +547,7 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
 
     type DeadStockProductRow = {
       month_key: string;
-      product_id: number | string | null;
+      product_id: string | number | null;
       product_name: string | null;
       dead_qty: number | string | null;
       unit_cost: number | string | null;
@@ -581,16 +586,17 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
           WHERE oi.product_id = p.id
             AND o.order_date >= mb.month_start
             AND o.order_date < mb.month_end
-            AND o.status IN ('completed', 'เสร็จสิ้น')
+            AND o.order_status IN ('completed', 'เสร็จสิ้น')
         )
       ORDER BY mb.month_key, p.name
     `;
 
-    const rawRows = await dbClient.execute(query);
+    const [queryRows] = (await dbClient.execute(query)) as unknown as [
+      DeadStockProductRow[] | undefined,
+      unknown
+    ];
 
-    const rows: DeadStockProductRow[] = Array.isArray(rawRows)
-      ? (rawRows as unknown as DeadStockProductRow[])
-      : [];
+    const rows: DeadStockProductRow[] = Array.isArray(queryRows) ? queryRows : [];
 
     const monthsByKey = new Map<
       string,
@@ -602,7 +608,7 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
           dead_value: number;
         };
         products: Array<{
-          product_id: number | null;
+          product_id: string | null;
           product_name: string;
           dead_qty: number;
           dead_value: number;
@@ -635,6 +641,17 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
       return 0;
     };
 
+    const coerceProductId = (value: unknown): string | null => {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return String(value);
+      }
+      return null;
+    };
+
     for (const row of rows) {
       const monthKey = row.month_key;
       if (typeof monthKey !== "string") {
@@ -646,17 +663,17 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
         continue;
       }
 
-      const productId = clampNumber(row.product_id);
+      const productId = coerceProductId(row.product_id);
       const productName =
         typeof row.product_name === "string" && row.product_name.trim().length > 0
           ? row.product_name.trim()
-          : `สินค้า #${productId || "ไม่ระบุ"}`;
+          : `สินค้า #${productId ?? "ไม่ระบุ"}`;
 
       const deadQty = clampNumber(row.dead_qty);
       const deadValue = clampNumber(row.dead_value);
 
       monthEntry.products.push({
-        product_id: Number.isFinite(productId) ? productId : null,
+        product_id: productId,
         product_name: productName,
         dead_qty: deadQty,
         dead_value: deadValue,
@@ -728,7 +745,7 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
   }
 });
 
-//Top Sellers
+//ยอดขายตามอันดับสินค้า
 router.get("/products/top-sellers", async (req, res, next) => {
   try {
     const now = new Date();
@@ -764,11 +781,17 @@ router.get("/products/top-sellers", async (req, res, next) => {
       targetParts.monthIndex + 1
     );
 
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit.at(-1) : req.query.limit;
+    const parsedLimit =
+      typeof rawLimit === "string" ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : 6;
+
     const rows = await dbClient
       .select({
-        productId: products.id,
+        productUuid: products.id,
         productName: products.name,
-        company: products.company,
+        productCompany: products.company,
+        productImage: products.image,
         totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0)`,
       })
       .from(order_items)
@@ -778,23 +801,41 @@ router.get("/products/top-sellers", async (req, res, next) => {
         and(
           gte(orders.order_date, startOfTargetMonth),
           lt(orders.order_date, startOfNextMonth),
-          inArray(orders.status, completedOrderStatuses)
+          inArray(orders.order_status, completedOrderStatuses)
         )
       )
-      .groupBy(products.id, products.name, products.company)
+      .groupBy(products.id, products.name, products.company, products.image)
       .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0) DESC`)
-      .limit(6);
+      .limit(limit);
 
-    const productsByQuantity = rows.map((row) => {
+    const productsByQuantity = rows.map((row, index) => {
       const totalQuantity = Number(row.totalQuantity ?? 0);
-      const trimmedName = row.productName?.trim() || row.company?.trim() || "ไม่ระบุสินค้า";
-      const company = row.company?.trim() ?? null;
+      const trimmedName =
+        row.productName?.trim() || row.productCompany?.trim() || "ไม่ระบุสินค้า";
+      const company = row.productCompany?.trim() ?? null;
+
+      let numericProductId: number | null = null;
+      if (typeof row.productUuid === "number") {
+        numericProductId = Number.isFinite(row.productUuid) ? row.productUuid : null;
+      } else if (typeof row.productUuid === "string") {
+        const digitsMatch = row.productUuid.match(/\d+/);
+        if (digitsMatch) {
+          const parsed = Number.parseInt(digitsMatch[0], 10);
+          numericProductId = Number.isFinite(parsed) ? parsed : null;
+        }
+      }
+
+      const productId = numericProductId ?? index + 1;
 
       return {
-        productId: row.productId,
+        productId,
+        id: productId,
+        productUuid: row.productUuid,
+        productCode: row.productUuid,
         name: trimmedName,
         productName: trimmedName,
         company,
+        image: row.productImage ?? null,
         totalQuantity,
         quantitySold: totalQuantity,
         orders: totalQuantity,
@@ -806,6 +847,7 @@ router.get("/products/top-sellers", async (req, res, next) => {
         start: startOfTargetMonth.toISOString(),
         end: startOfNextMonth.toISOString(),
       },
+      limit,
       products: productsByQuantity,
     });
   } catch (error) {
@@ -813,7 +855,111 @@ router.get("/products/top-sellers", async (req, res, next) => {
   }
 });
 
-//todo
+//สินค้าขายดีประจำเดือน
+router.get("/products/top-sellers-month", async (req, res, next) => {
+  try {
+    const parseDateParam = (value: unknown): Date | null => {
+      if (typeof value !== "string" || value.trim().length === 0) {
+        return null;
+      }
+
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+
+    const now = new Date();
+    const { start: defaultStart, end: defaultEnd } = getCurrentBangkokMonthRange(now);
+
+    const rawStart = Array.isArray(req.query.start) ? req.query.start.at(-1) : req.query.start;
+    const rawEnd = Array.isArray(req.query.end) ? req.query.end.at(-1) : req.query.end;
+
+    const parsedStart = parseDateParam(rawStart);
+    const parsedEnd = parseDateParam(rawEnd);
+
+    let rangeStart = defaultStart;
+    let rangeExclusiveEnd = defaultEnd;
+
+    if (parsedStart && parsedEnd) {
+      rangeStart = parsedStart;
+      rangeExclusiveEnd = parsedEnd;
+      if (!(rangeStart.getTime() < rangeExclusiveEnd.getTime())) {
+        rangeExclusiveEnd = new Date(rangeStart.getTime() + 24 * 60 * 60 * 1000);
+      }
+    } else if (parsedStart && !parsedEnd) {
+      const { year, monthIndex } = getBangkokYearMonth(parsedStart);
+      rangeStart = createBangkokMonthStartDate(year, monthIndex);
+      rangeExclusiveEnd = createBangkokMonthStartDate(year, monthIndex + 1);
+    } else if (!parsedStart && parsedEnd) {
+      const adjustedEnd = parsedEnd;
+      const { year, monthIndex } = getBangkokYearMonth(adjustedEnd);
+      rangeStart = createBangkokMonthStartDate(year, monthIndex);
+      rangeExclusiveEnd = adjustedEnd;
+      if (!(rangeStart.getTime() < rangeExclusiveEnd.getTime())) {
+        rangeExclusiveEnd = createBangkokMonthStartDate(year, monthIndex + 1);
+      }
+    }
+
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit.at(-1) : req.query.limit;
+    const parsedLimit =
+      typeof rawLimit === "string" ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const limit = Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : 5;
+
+    const rows = await dbClient
+      .select({
+        productId: products.id,
+        productName: products.name,
+        productImage: products.image,
+        productCompany: products.company,
+        productCategoryId: products.category_id,
+        totalSold: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0)`,
+      })
+      .from(order_items)
+      .innerJoin(orders, eq(order_items.order_id, orders.id))
+      .innerJoin(products, eq(order_items.product_id, products.id))
+      .where(
+        and(
+          gte(orders.order_date, rangeStart),
+          lt(orders.order_date, rangeExclusiveEnd),
+          inArray(orders.order_status, completedOrderStatuses)
+        )
+      )
+      .groupBy(
+        products.id,
+        products.name,
+        products.image,
+        products.company,
+        products.category_id
+      )
+      .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0) DESC`)
+      .limit(limit);
+
+    const productsBySales = rows.map((row, index) => {
+      const totalSold = Number(row.totalSold ?? 0);
+      const trimmedName = row.productName?.trim() || "ไม่ระบุสินค้า";
+
+      return {
+        rank: index + 1,
+        productId: row.productId,
+        productName: trimmedName,
+        image: row.productImage ?? null,
+        totalSold,
+        company: row.productCompany?.trim() ?? null,
+        categoryId: row.productCategoryId == null ? null : Number(row.productCategoryId),
+      };
+    });
+
+    res.json({
+      range: {
+        start: rangeStart.toISOString(),
+        end: rangeExclusiveEnd.toISOString(),
+      },
+      limit,
+      products: productsBySales,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 
 export default router;
