@@ -10,6 +10,9 @@ import "./config/passport.js"; // โหลดกลยุทธ์ Google
 
 const app = express();
 
+// disable etag to always send fresh analytics responses
+app.disable("etag");
+
 const parseOrigins = (raw?: string): string[] =>
     (raw ?? "")
         .split(",")
@@ -37,6 +40,32 @@ const corsOptions: CorsOptions = {
 // middlewares พื้นฐาน
 app.use(morgan("dev"));
 app.use(helmet());
+
+const rawFrontendOrigins = process.env.FRONTEND_URL ?? "http://localhost:3000,http://localhost:3005";
+const allowedOrigins = rawFrontendOrigins
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+app.use(
+    cors({
+        origin(origin, callback) {
+            if (!origin) {
+                callback(null, true);
+                return;
+            }
+
+            const normalizedOrigin = origin.replace(/\/+$/, "");
+
+            if (allowedOrigins.includes(normalizedOrigin)) {
+                callback(null, true);
+            } else {
+                callback(null, false);
+            }
+        },
+        credentials: true,
+    })
+);
 app.use(cors(corsOptions));
 app.use(express.json());
 
