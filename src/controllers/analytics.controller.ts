@@ -190,7 +190,7 @@ async function getStockInMonthlySummary({ start, end }: MonthRange): Promise<Sto
   return months;
 }
 
-//Sale Summary
+//กราฟแสดงภาพรวมยอดขาย
 router.get("/sales/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -239,7 +239,7 @@ router.get("/sales/monthly-summary", async (_req, res, next) => {
   }
 });
 
-//Stock In Purchase Summary
+//กราฟสรุปยอดการรับสินค้าจากซัพพลายเออร์
 router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -253,7 +253,7 @@ router.get("/stock-in/monthly-summary", async (_req, res, next) => {
   }
 });
 
-//Stock In Purchase Summary
+//สรุปยอดการรับสินค้าแบบตาราง
 router.get("/stock-in/summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -435,7 +435,7 @@ router.get("/profit/monthly-total", async (_req, res, next) => {
   }
 });
 
-//Highest Order Value by Customer
+//ลูกค้าที่มียอดสั่งซื้อสูงสุด
 router.get("/customers/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -486,7 +486,7 @@ router.get("/customers/top-order-value", async (_req, res, next) => {
   }
 });
 
-//Highest Order Value by Company
+//สรุปยอดการสั่งซื้อจากซัพพลายเออร์
 router.get("/company/top-order-value", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -539,7 +539,7 @@ router.get("/company/top-order-value", async (_req, res, next) => {
   }
 });
 
-//Dead Stock
+//สินค้าค้างสต็อก
 router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
   try {
     const now = new Date();
@@ -745,7 +745,7 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
   }
 });
 
-//Top Sellers
+//ยอดขายตามอันดับสินค้า
 router.get("/products/top-sellers", async (req, res, next) => {
   try {
     const now = new Date();
@@ -855,7 +855,7 @@ router.get("/products/top-sellers", async (req, res, next) => {
   }
 });
 
-//ยอดขายตามอันดับสินค้า
+//สินค้าขายดีประจำเดือน
 router.get("/products/top-sellers-month", async (req, res, next) => {
   try {
     const parseDateParam = (value: unknown): Date | null => {
