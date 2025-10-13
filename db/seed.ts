@@ -39,9 +39,9 @@ async function main() {
 
     // ---- 3) master: customers ----
     await db.insert(customers).values([
-        { id: 1, fname: "Somchai", lname: "W.", email: "somchai@example.com", tel: "089-000-1000" },
-        { id: 2, fname: "Suda", lname: "K.", email: "suda@example.com", tel: "089-000-2000" },
-        { id: 3, fname: "Anan", lname: "T.", email: "anan@example.com", tel: "089-000-3000" },
+        { id: 1, fname: "Somchai", lname: "W.", email: "somchai@example.com", address: "หอ", tel: "089-000-1000" },
+        { id: 2, fname: "Suda", lname: "K.", email: "suda@example.com", address: "บ้าน", tel: "089-000-2000" },
+        { id: 3, fname: "Anan", lname: "T.", email: "anan@example.com", address: "โรงเรียน", tel: "089-000-3000" },
     ]);
 
     // ---- 4) master: employee (ใส่รหัสผ่านตัวอย่างเป็น bcrypt hash ของ "password") ----
