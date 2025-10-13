@@ -241,6 +241,66 @@ router.get("/products", async (_req, res, next) => {
     }
 });
 
+router.patch("/products/:id/cost", async (req, res, next) => {
+    try {
+        const id = Number(req.params.id);
+        const { cost } = req.body ?? {};
+
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "Invalid product id" });
+        }
+        const numCost = Number(cost);
+        if (!Number.isFinite(numCost) || numCost < 0) {
+            return res.status(400).json({ message: "Invalid cost" });
+        }
+
+        const costStr = Number(numCost).toFixed(2); // ปรับ scale ให้ตรงกับคอลัมน์
+        await dbClient
+            .update(products)
+            .set({ cost: costStr, updated_at: new Date() })
+            .where(eq(products.id, String(id)));
+
+        // drizzle mysql จะคืนค่าจำนวนแถวผ่าน driver; ถ้าอยากเข้ม ให้ select กลับมาตรวจซ้ำก็ได้
+        return res.json({ ok: true, product_id: id, cost: numCost });
+    } catch (e) {
+        next(e);
+    }
+});
+
+/** อัปเดตต้นทุนแบบ bulk: [{product_id, cost}] */
+router.post("/products/cost-bulk", async (req, res, next) => {
+    try {
+        const items: Array<{ product_id: number; cost: number }> = Array.isArray(req.body?.items) ? req.body.items : [];
+        if (items.length === 0) {
+            return res.status(400).json({ message: "No items" });
+        }
+
+        // ตรวจความถูกต้องเบื้องต้น
+        for (const it of items) {
+            if (!Number.isFinite(it.product_id) || it.product_id <= 0) {
+                return res.status(400).json({ message: `Invalid product_id: ${it.product_id}` });
+            }
+            if (!Number.isFinite(it.cost) || it.cost < 0) {
+                return res.status(400).json({ message: `Invalid cost for product ${it.product_id}` });
+            }
+        }
+
+        // อัปเดตทีละรายการ (ง่าย/ชัดเจน)
+        for (const it of items) {
+            const costStr = Number(it.cost).toFixed(2); // สมมติ scale = 2
+            const productId = String(it.product_id);
+            await dbClient
+                .update(products)
+                .set({ cost: costStr, updated_at: new Date() })
+                .where(eq(products.id, productId));
+        }
+
+        return res.json({ ok: true, updated: items.length });
+    } catch (e) {
+        next(e);
+    }
+});
+
 router.post("/stock-check/adjust", async (req, res, next) => {
     try {
         const { items } = req.body || {};
