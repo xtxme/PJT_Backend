@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "41b19dd6-c921-47ba-900b-fc25428832f3",
+  "id": "53d3fdcd-cfeb-460f-970b-7fc2b50d169b",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "categories": {
@@ -70,6 +70,13 @@
         "email": {
           "name": "email",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

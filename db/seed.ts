@@ -1,8 +1,9 @@
-//seed
+// db/seed.ts
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
 import {
     categories,
     suppliers,
@@ -13,74 +14,73 @@ import {
     employee,
     orders,
     order_items,
-} from "./schema.js"; // ✅ ปรับ path ให้ตรงกับโปรเจกต์คุณ
+} from "./schema.js";
 import { connectionConfig } from "./utils.js";
-import bcrypt from "bcrypt";
 
-const passwordHash = await bcrypt.hash("password123", 10);
+/* -------------------------------------------------
+   🧩 Helper functions
+--------------------------------------------------- */
+function randInt(min: number, max: number) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function randPrice(min: number, max: number) {
+    const val = Math.floor(Math.random() * (max - min + 1)) + min;
+    return val.toFixed(2);
+}
+
+function randChoice<T extends readonly any[]>(arr: T): T[number] {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randDate(start: Date, end: Date) {
+    return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+}
+
+/* -------------------------------------------------
+   🌱 Main seeding function
+--------------------------------------------------- */
 async function main() {
     const connection = await mysql.createConnection(connectionConfig);
     const db = drizzle(connection);
     console.log("🟢 Connected to database");
 
-    // ลบข้อมูลเก่าตามลำดับ FK
+    await connection.query("SET FOREIGN_KEY_CHECKS = 0;");
     console.log("🧹 Clearing old data...");
     await db.delete(order_items);
     await db.delete(orders);
-    await db.delete(stock_in_batches);
     await db.delete(stock_in);
+    await db.delete(stock_in_batches);
     await db.delete(products);
     await db.delete(suppliers);
     await db.delete(customers);
     await db.delete(employee);
     await db.delete(categories);
 
-    /* =========================
-       1️⃣ CATEGORIES
-    ========================= */
+    /* -------------------------- 1️⃣ Categories -------------------------- */
     console.log("🌱 Seeding categories...");
-    await db.insert(categories).values([
-        { id: 1, name: "กล้อง" },
-        { id: 2, name: "เลนส์" },
-        { id: 3, name: "อุปกรณ์เสริม" },
-    ]);
+    const catNames = ["กล้อง", "เลนส์", "ขาตั้ง", "กระเป๋า", "อุปกรณ์เสริม"];
+    await db.insert(categories).values(catNames.map((name, i) => ({ id: i + 1, name })));
 
-    /* =========================
-       2️⃣ SUPPLIERS
-    ========================= */
+    /* -------------------------- 2️⃣ Suppliers -------------------------- */
     console.log("🌱 Seeding suppliers...");
     await db.insert(suppliers).values([
-        {
-            id: 1,
-            company_name: "ChiangMai Camera Co.",
-            email: "contact@cmcamera.co.th",
-            tel: "081-111-1111",
-        },
-        {
-            id: 2,
-            company_name: "Bangkok Lens Ltd.",
-            email: "sales@bklens.com",
-            tel: "081-222-2222",
-        },
+        { id: 1, company_name: "ChiangMai Camera Co.", email: "contact@cmcamera.co.th", tel: "081-111-1111" },
+        { id: 2, company_name: "Bangkok Lens Ltd.", email: "sales@bklens.com", tel: "081-222-2222" },
+        { id: 3, company_name: "PhotoGear Thailand", email: "info@photogear.co.th", tel: "081-333-3333" },
     ]);
 
-    /* =========================
-       3️⃣ CUSTOMERS
-    ========================= */
-    console.log("🌱 Seeding customers...");
-    await db.insert(customers).values([
-        { id: 1, fname: "สมชาย", lname: "ใจดี", email: "somchai@example.com", tel: "0811111111" },
-        { id: 2, fname: "สมหญิง", lname: "ใจงาม", email: "somying@example.com", tel: "0822222222" },
-    ]);
-
-    /* =========================
-       4️⃣ EMPLOYEE
-    ========================= */
+    /* -------------------------- 3️⃣ Employees -------------------------- */
     console.log("🌱 Seeding employees...");
-    // bcrypt hash ของคำว่า "password"
-    // const passwordHash =
-    //     "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK";
-
+    const password = await bcrypt.hash("1234", 10);
     await db.insert(employee).values([
         {
             id: 1,
@@ -88,10 +88,10 @@ async function main() {
             lname: "Admin",
             username: "owner",
             email: "owner@shop.local",
-            password: passwordHash,
+            password,
             employee_status: "active",
             role: "owner",
-            tel: "081-123-4567",
+            tel: "081-000-0001",
         },
         {
             id: 2,
@@ -99,10 +99,10 @@ async function main() {
             lname: "Sale",
             username: "sale1",
             email: "sale1@shop.local",
-            password: passwordHash,
+            password,
             employee_status: "active",
             role: "sale",
-            tel: "081-222-3333",
+            tel: "081-000-0002",
         },
         {
             id: 3,
@@ -110,194 +110,159 @@ async function main() {
             lname: "Warehouse",
             username: "wh1",
             email: "wh1@shop.local",
-            password: passwordHash,
+            password,
             employee_status: "active",
             role: "warehouse",
-            tel: "081-333-4444",
+            tel: "081-000-0003",
         },
     ]);
 
-    /* =========================
-       5️⃣ PRODUCTS
-    ========================= */
+    /* -------------------------- 4️⃣ Customers -------------------------- */
+    console.log("🌱 Seeding customers...");
+    const fnames = ["สมชาย", "สมหญิง", "ศิริพร", "มานพ", "ณัฐ", "ปิยะ", "วรัญญา", "เกษม", "ปัทมา", "อัญชัน"];
+    const lnames = ["ใจดี", "สุขใจ", "ทองดี", "เพ็ญศรี", "ศรีสุข", "เก่งกล้า", "อารี", "กล้าแกร่ง"];
+    const customersData = Array.from({ length: 60 }, (_, i) => ({
+        id: i + 1,
+        fname: randChoice(fnames),
+        lname: randChoice(lnames),
+        email: `user${i + 1}@example.com`,
+        tel: `08${randInt(10000000, 99999999)}`,
+        address: `ที่อยู่ลูกค้า ${i + 1}`,
+    }));
+    await db.insert(customers).values(customersData);
+
+    /* -------------------------- 5️⃣ Products -------------------------- */
     console.log("🌱 Seeding products...");
-    const p1 = crypto.randomUUID();
-    const p2 = crypto.randomUUID();
-    const p3 = crypto.randomUUID();
+    const baseProducts: [string, number, number, number][] = [
+        ["Mirrorless X100", 1, 15000, 19900],
+        ["DSLR Z500", 1, 22000, 27900],
+        ["Lens 50mm f1.8", 2, 3500, 4990],
+        ["Tripod Carbon Fiber Pro", 3, 1800, 2490],
+        ["Camera Bag Explorer", 4, 900, 1290],
+        ["Cleaning Kit 5in1", 5, 300, 490],
+        ["Telephoto Lens 70-200mm", 2, 18000, 23900],
+        ["Action Camera GoMini", 1, 8500, 11900],
+        ["LED Light Panel", 3, 1500, 2190],
+        ["Drone AirShot 4K", 1, 19000, 25900],
+    ];
 
-    await db.insert(products).values([
-        {
-            id: p1,
-            name: "Mirrorless X100",
-            description: "กล้อง mirrorless ใช้งานอเนกประสงค์",
-            image: "/images/camera-x100.jpg",
-            category_id: 1,
-            unit: "ตัว",
-            cost: "15000.00",
-            sell: "19900.00",
-            quantity: 10,
-            counted_qty: 9,
-            quantity_pending: 1,
-            last_counted_at: new Date("2025-10-10T10:00:00"),
-            count_note: "ของหาย 1 ตัว",
-            product_status: "active",
-        },
-        {
-            id: p2,
-            name: "Lens 50mm f1.8",
-            description: "เลนส์ระยะมาตรฐาน",
-            image: "/images/lens-50mm.jpg",
-            category_id: 2,
-            unit: "ชิ้น",
-            cost: "3500.00",
-            sell: "4990.00",
-            quantity: 20,
-            counted_qty: 20,
-            quantity_pending: 0,
-            last_counted_at: new Date("2025-10-05T11:00:00"),
-            product_status: "active",
-        },
-        {
-            id: p3,
-            name: "Tripod Carbon",
-            description: "ขาตั้งคาร์บอนไฟเบอร์ น้ำหนักเบา",
-            image: "/images/tripod-carbon.jpg",
-            category_id: 3,
-            unit: "ตัว",
-            cost: "1800.00",
-            sell: "2490.00",
-            quantity: 15,
-            counted_qty: 17,
-            quantity_pending: 2,
-            last_counted_at: new Date("2025-10-09T09:00:00"),
-            count_note: "มีของค้างในโกดัง",
-            product_status: "restock_pending",
-        },
-    ]);
-    /* =========================
-       6️⃣ STOCK_IN_BATCHES
-    ========================= */
+    const productUUIDs = baseProducts.map(() => crypto.randomUUID());
+    await db.insert(products).values(
+        baseProducts.map(([name, cat, cost, sell], i) => ({
+            id: productUUIDs[i],
+            name,
+            description: `${name} คุณภาพสูง เหมาะกับมือโปร`,
+            category_id: cat,
+            cost: cost.toString(),
+            sell: sell.toString(),
+            quantity: randInt(10, 40),
+            counted_qty: randInt(10, 40),
+            quantity_pending: randInt(0, 5),
+            product_status: randChoice(["active", "low_stock", "restock_pending", "pricing_pending"] as const),
+            image: `/images/${name.toLowerCase().replace(/ /g, "-")}.jpg`,
+            last_counted_at: new Date(),
+            count_note: "ตรวจเช็กสต็อกประจำเดือน",
+        }))
+    );
+
+    /* -------------------------- 6️⃣ Stock-in -------------------------- */
     console.log("🌱 Seeding stock_in_batches...");
-    await db.insert(stock_in_batches).values([
-        {
-            id: 1,
-            supplier_id: 1,
-            expected_date: new Date("2025-10-01T10:00:00"),
-            batch_status: "completed",
-            note: "ล็อตเปิดร้าน",
-        },
-        {
-            id: 2,
-            supplier_id: 2,
-            expected_date: new Date("2025-10-05T09:00:00"),
-            batch_status: "completed",
-            note: "รีสต๊อกเลนส์ 50mm",
-        },
-        {
-            id: 3,
-            supplier_id: 1,
-            expected_date: new Date("2025-10-07T15:00:00"),
-            batch_status: "some_received",
-            note: "รอของอีก 2 ชิ้น",
-        },
-    ]);
+    const stockBatches = Array.from({ length: 10 }, (_, i) => ({
+        id: i + 1,
+        supplier_id: randInt(1, 3),
+        expected_date: randDate(new Date("2025-07-14"), new Date("2025-10-14")),
+        batch_status: randChoice(["completed", "some_received"] as const),
+        note: `ล็อต ${i + 1}`,
+    }));
+    await db.insert(stock_in_batches).values(stockBatches);
 
-    /* =========================
-       6️⃣ STOCK_IN
-    ========================= */
     console.log("🌱 Seeding stock_in...");
-    await db.insert(stock_in).values([
-        {
-            id: 1,
-            batch_id: 1,
-            product_id: p1,
-            quantity: 5,
-            received_qty: 5,
-            supplier_id: 1,
-            unit_cost: "15000.00",
-            stock_in_status: "completed",
-            note: "ล็อตแรกเปิดร้าน",
-        },
-        {
-            id: 2,
-            batch_id: 2,
-            product_id: p2,
-            quantity: 10,
-            received_qty: 10,
-            supplier_id: 2,
-            unit_cost: "3500.00",
-            stock_in_status: "completed",
-            note: "สั่งเพิ่มรอบเดือนตุลา",
-        },
-        {
-            id: 3,
-            batch_id: 3,
-            product_id: p3,
-            quantity: 5,
-            received_qty: 3,
-            supplier_id: 1,
-            unit_cost: "1800.00",
-            stock_in_status: "some_received",
-            note: "รออีก 2 ชิ้น",
-        },
-    ]);
+    const stockInData = Array.from({ length: 40 }, () => ({
+        batch_id: randInt(1, 10),
+        product_id: randChoice(productUUIDs),
+        quantity: randInt(3, 15),
+        received_qty: randInt(3, 15),
+        unit_cost: randPrice(1000, 20000),
+        supplier_id: randInt(1, 3),
+        stock_in_status: randChoice(["completed", "some_received", "pending", "canceled"] as const),
+        note: "รับสินค้าเข้าสต็อก",
+    }));
+    await db.insert(stock_in).values(stockInData);
 
-    /* =========================
-       7️⃣ ORDERS
-    ========================= */
+    /* -------------------------- 7️⃣ Orders (3 เดือน + inv by date) -------------------------- */
     console.log("🌱 Seeding orders...");
-    await db.insert(orders).values([
-        {
-            id: 1,
-            sale_id: 2,
-            order_number: "ORD-2025-0001",
-            customer_id: 1,
-            total_amount: "22380.00",
-            order_status: "completed",
-            note: "ลูกค้าประจำซื้อกล้อง+เลนส์",
-        },
-        {
-            id: 2,
-            sale_id: 2,
-            order_number: "ORD-2025-0002",
-            customer_id: 2,
-            total_amount: "2490.00",
-            order_status: "completed",
-            note: "สั่งขาตั้งเพิ่ม",
-        },
-    ]);
 
-    /* =========================
-       8️⃣ ORDER_ITEMS
-    ========================= */
+    const startDate = new Date("2025-07-14"); // 3 เดือนก่อน
+    const endDate = new Date("2025-10-14"); // วันนี้
+    const totalOrders = 300; // รวม 300 รายการ
+
+    const dateGroups: Record<string, number> = {};
+
+    function formatInvoiceNumber(date: Date, seq: number) {
+        const yy = String(date.getFullYear()).slice(-2);
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const dd = String(date.getDate()).padStart(2, "0");
+        const seqStr = String(seq).padStart(4, "0");
+        return `INV-${yy}${mm}${dd}${seqStr}`;
+    }
+
+    const orderData = Array.from({ length: totalOrders }, (_, i) => {
+        const date = randDate(startDate, endDate);
+        const dateKey =
+            String(date.getFullYear()).slice(-2) +
+            String(date.getMonth() + 1).padStart(2, "0") +
+            String(date.getDate()).padStart(2, "0");
+        dateGroups[dateKey] = (dateGroups[dateKey] || 0) + 1;
+        const seq = dateGroups[dateKey];
+        return {
+            id: i + 1,
+            sale_id: 2,
+            order_number: formatInvoiceNumber(date, seq),
+            customer_id: randInt(1, 60),
+            order_date: date,
+            total_amount: randPrice(2000, 50000),
+            order_status: randChoice(["completed", "canceled"] as const),
+            note: `คำสั่งซื้อประจำวันที่ ${dateKey}`,
+        };
+    });
+
+    await db.insert(orders).values(orderData);
+
+    /* -------------------------- 8️⃣ Order items -------------------------- */
     console.log("🌱 Seeding order_items...");
-    await db.insert(order_items).values([
-        {
-            id: 1,
-            order_id: 1,
-            product_id: p1,
-            quantity: 1,
-            unit_price: "19900.00",
-            total_price: "19900.00",
-        },
-        {
-            id: 2,
-            order_id: 1,
-            product_id: p2,
-            quantity: 1,
-            unit_price: "4990.00",
-            total_price: "4990.00",
-        },
-        {
-            id: 3,
-            order_id: 2,
-            product_id: p3,
-            quantity: 1,
-            unit_price: "2490.00",
-            total_price: "2490.00",
-        },
-    ]);
+    const seenPairs = new Set<string>();
+    const orderItemData: {
+        order_id: number;
+        product_id: string;
+        quantity: number;
+        unit_price: string;
+        total_price: string;
+    }[] = [];
 
+    while (orderItemData.length < 600) {
+        const orderId = randInt(1, totalOrders);
+        const productId = randChoice(productUUIDs);
+        const key = `${orderId}-${productId}`;
+        if (seenPairs.has(key)) continue;
+        seenPairs.add(key);
+
+        const qty = randInt(1, 3);
+        const price = parseFloat(randPrice(500, 15000));
+        orderItemData.push({
+            order_id: orderId,
+            product_id: productId,
+            quantity: qty,
+            unit_price: price.toFixed(2),
+            total_price: (price * qty).toFixed(2),
+        });
+    }
+
+    const chunks = chunkArray(orderItemData, 100);
+    for (const chunk of chunks) {
+        await db.insert(order_items).values(chunk);
+    }
+
+    await connection.query("SET FOREIGN_KEY_CHECKS = 1;");
     console.log("✅ Seed completed successfully!");
     await connection.end();
 }
