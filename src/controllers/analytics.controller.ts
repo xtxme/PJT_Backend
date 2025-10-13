@@ -717,26 +717,26 @@ router.get("/dead-stock/monthly-summary", async (_req, res, next) => {
 
     const latestSummary = latestMonth
       ? {
-          month_key: latestMonth.month_key,
-          totals: latestMonth.totals,
-          products: latestMonth.products,
-          compare_to_previous: previousMonth
-            ? {
-                dead_products: computeDiff(
-                  latestMonth.totals.dead_products,
-                  previousMonth?.totals.dead_products
-                ),
-                dead_qty: computeDiff(
-                  latestMonth.totals.dead_qty,
-                  previousMonth?.totals.dead_qty
-                ),
-                dead_value: computeDiff(
-                  latestMonth.totals.dead_value,
-                  previousMonth?.totals.dead_value
-                ),
-              }
-            : null,
-        }
+        month_key: latestMonth.month_key,
+        totals: latestMonth.totals,
+        products: latestMonth.products,
+        compare_to_previous: previousMonth
+          ? {
+            dead_products: computeDiff(
+              latestMonth.totals.dead_products,
+              previousMonth?.totals.dead_products
+            ),
+            dead_qty: computeDiff(
+              latestMonth.totals.dead_qty,
+              previousMonth?.totals.dead_qty
+            ),
+            dead_value: computeDiff(
+              latestMonth.totals.dead_value,
+              previousMonth?.totals.dead_value
+            ),
+          }
+          : null,
+      }
       : null;
 
     res.json({ months, latest: latestSummary });
@@ -790,7 +790,7 @@ router.get("/products/top-sellers", async (req, res, next) => {
       .select({
         productUuid: products.id,
         productName: products.name,
-        productCompany: products.company,
+        // productCompany: products.company,
         productImage: products.image,
         totalQuantity: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0)`,
       })
@@ -804,15 +804,15 @@ router.get("/products/top-sellers", async (req, res, next) => {
           inArray(orders.order_status, completedOrderStatuses)
         )
       )
-      .groupBy(products.id, products.name, products.company, products.image)
+      .groupBy(products.id, products.name, products.image)
       .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0) DESC`)
       .limit(limit);
 
     const productsByQuantity = rows.map((row, index) => {
       const totalQuantity = Number(row.totalQuantity ?? 0);
       const trimmedName =
-        row.productName?.trim() || row.productCompany?.trim() || "ไม่ระบุสินค้า";
-      const company = row.productCompany?.trim() ?? null;
+        row.productName?.trim() || "ไม่ระบุสินค้า";
+      // const company = row.productCompany?.trim() ?? null;
 
       let numericProductId: number | null = null;
       if (typeof row.productUuid === "number") {
@@ -834,7 +834,7 @@ router.get("/products/top-sellers", async (req, res, next) => {
         productCode: row.productUuid,
         name: trimmedName,
         productName: trimmedName,
-        company,
+        // company,
         image: row.productImage ?? null,
         totalQuantity,
         quantitySold: totalQuantity,
@@ -909,7 +909,7 @@ router.get("/products/top-sellers-month", async (req, res, next) => {
         productId: products.id,
         productName: products.name,
         productImage: products.image,
-        productCompany: products.company,
+        // productCompany: products.company,
         productCategoryId: products.category_id,
         totalSold: sql<number>`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0)`,
       })
@@ -927,7 +927,7 @@ router.get("/products/top-sellers-month", async (req, res, next) => {
         products.id,
         products.name,
         products.image,
-        products.company,
+        // products.company,
         products.category_id
       )
       .orderBy(sql`COALESCE(SUM(COALESCE(${order_items.quantity}, 0)), 0) DESC`)
@@ -943,7 +943,7 @@ router.get("/products/top-sellers-month", async (req, res, next) => {
         productName: trimmedName,
         image: row.productImage ?? null,
         totalSold,
-        company: row.productCompany?.trim() ?? null,
+        // company: row.productCompany?.trim() ?? null,
         categoryId: row.productCategoryId == null ? null : Number(row.productCategoryId),
       };
     });

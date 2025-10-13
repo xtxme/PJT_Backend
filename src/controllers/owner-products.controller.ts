@@ -52,7 +52,7 @@ const buildSearchCondition = (searchTerm: string) => {
   return or(
     like(products.name, keyword),
     like(products.id, keyword),
-    like(products.company, keyword)
+    // like(products.company, keyword)
   );
 };
 
