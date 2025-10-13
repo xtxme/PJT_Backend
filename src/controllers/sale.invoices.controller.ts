@@ -19,7 +19,7 @@ router.get(
                 order_date: orders.order_date,
                 total_amount: orders.total_amount,
                 bill: orders.bill,
-                status: orders.status,
+                status: orders.order_status,
                 note: orders.note,
             })
             .from(orders)
@@ -45,7 +45,7 @@ router.get(
             order_date: orders.order_date,
             total_amount: orders.total_amount,
             bill: orders.bill,
-            status: orders.status,
+            status: orders.order_status,
             note: orders.note,
         };
 
@@ -93,7 +93,7 @@ router.get(
                 order_number: orders.order_number,
                 order_date: orders.order_date,
                 total_amount: orders.total_amount,
-                status: orders.status,
+                status: orders.order_status,
                 note: orders.note,
                 bill: orders.bill,
                 customer_name: sql`CONCAT(${customers.fname}, ' ', ${customers.lname})`.as("customer_name"),
@@ -153,7 +153,7 @@ router.post(
                 total_amount: total_amount ?? "0",
                 bill: bill || null,
                 note: note || null,
-                status: "completed",
+                order_status: "completed",
                 order_date: sql`NOW()`,
             })
             .$returningId();
@@ -169,7 +169,7 @@ router.post(
                 order_date: orders.order_date,
                 total_amount: orders.total_amount,
                 bill: orders.bill,
-                status: orders.status,
+                status: orders.order_status,
                 note: orders.note,
             })
             .from(orders)
@@ -204,7 +204,7 @@ router.put(
 
             // ❗ 2) ตรวจว่าบิลนี้ถูกยกเลิกไปแล้วหรือยัง
             const [currentStatus] = await dbClient
-                .select({ status: orders.status })
+                .select({ status: orders.order_status })
                 .from(orders)
                 .where(eq(orders.id, id));
 
@@ -234,7 +234,7 @@ router.put(
             // 🧾 5) เปลี่ยนสถานะบิลเป็น canceled
             await dbClient
                 .update(orders)
-                .set({ status: "canceled" })
+                .set({ order_status: "canceled" })
                 .where(eq(orders.id, id));
 
             // 💳 6) อัปเดตยอดรวมลูกค้า (recalculate)
@@ -244,7 +244,7 @@ router.put(
                 })
                 .from(orders)
                 .where(
-                    sql`${orders.customer_id} = ${invoice.customer_id} AND ${orders.status} = 'completed'`
+                    sql`${orders.customer_id} = ${invoice.customer_id} AND ${orders.order_status} = 'completed'`
                 );
 
             // (กรณีคุณมีฟิลด์ totalPaid ใน customers)
@@ -255,7 +255,7 @@ router.put(
                 .select({
                     id: orders.id,
                     order_number: orders.order_number,
-                    status: orders.status,
+                    status: orders.order_status,
                     total_amount: orders.total_amount,
                     order_date: orders.order_date,
                 })
@@ -284,7 +284,7 @@ router.get(
                 totalSales: sql`COALESCE(SUM(${orders.total_amount}), 0)`.as("totalSales"),
             })
             .from(orders)
-            .where(eq(orders.status, "completed"));
+            .where(eq(orders.order_status, "completed"));
 
         res.json({ success: true, data: summary });
     })

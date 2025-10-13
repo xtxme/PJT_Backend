@@ -20,7 +20,7 @@ router.get(
                 totalPaid: sql`
           COALESCE(SUM(
             CASE 
-              WHEN ${orders.status} = 'completed' 
+              WHEN ${orders.order_status} = 'completed' 
               THEN ${orders.total_amount} 
               ELSE 0 
             END
@@ -50,7 +50,7 @@ router.get(
             totalPaid: sql`
         COALESCE(SUM(
           CASE 
-            WHEN ${orders.status} = 'completed' 
+            WHEN ${orders.order_status} = 'completed' 
             THEN ${orders.total_amount} 
             ELSE 0 
           END
@@ -111,7 +111,7 @@ router.post(
                 customer_id: newCustomerId,
                 order_number: `INIT-${Date.now()}`,
                 total_amount: totalPaid,
-                status: "completed",
+                order_status: "completed",
             });
         }
 
@@ -126,7 +126,7 @@ router.post(
                 totalPaid: sql`
           COALESCE(SUM(
             CASE 
-              WHEN ${orders.status} = 'completed' 
+              WHEN ${orders.order_status} = 'completed' 
               THEN ${orders.total_amount} 
               ELSE 0 
             END
@@ -165,7 +165,7 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
                 totalPaid: sql`
           COALESCE(SUM(
             CASE 
-              WHEN ${orders.status} = 'completed' 
+              WHEN ${orders.order_status} = 'completed' 
               THEN ${orders.total_amount} 
               ELSE 0 
             END
