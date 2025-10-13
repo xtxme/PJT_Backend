@@ -38,7 +38,7 @@ router.get(
                 status: products.status,
             })
             .from(products)
-            .where(eq(products.status, "active"))
+            // .where(eq(products.status, "active"))
             .orderBy(products.id);
 
         res.json({ success: true, data: result });
@@ -100,12 +100,12 @@ router.get(
     })
 );
 
-/* 🟥 POST /sales — สร้างออเดอร์ใหม่ */
+/* 🟥 POST /sales — สร้างออเดอร์ใหม่ และอัปเดตสถานะสินค้า */
 router.post(
     "/",
     asyncHandler(async (req: Request, res: Response) => {
         try {
-            const { customerId, invoiceNo, totalAmount, vatAmount, grandTotal, productsInBill } = req.body;
+            const { customerId, invoiceNo, totalAmount, productsInBill } = req.body;
 
             if (!customerId || !productsInBill?.length) {
                 res.status(400).json({
@@ -121,35 +121,64 @@ router.post(
                 .values({
                     order_number: invoiceNo,
                     customer_id: Number(customerId),
-                    total_amount: String(grandTotal), // ✅ decimal ต้องเป็น string
+                    total_amount: String(totalAmount ?? 0),
                     status: "completed",
                 })
                 .$returningId();
 
             const orderId = newOrder.id;
 
+            // ✅ วนทุกสินค้าในบิล
             for (const item of productsInBill) {
+                const qty = Number(item.qty);
+                const sell = Number(item.sell);
+
+                // ✅ บันทึกรายการย่อย
                 await dbClient.insert(order_items).values({
                     order_id: orderId,
                     product_id: Number(item.id),
-                    quantity: Number(item.qty),
-                    unit_price: String(item.sell),
-                    total_price: String(item.qty * item.sell),
+                    quantity: qty,
+                    unit_price: String(sell),
+                    total_price: String(qty * sell),
                 });
 
+                // ✅ หักสต็อก
                 await dbClient
                     .update(products)
-                    .set({ quantity: sql`${products.quantity} - ${item.qty}` })
+                    .set({ quantity: sql`${products.quantity} - ${qty}` })
+                    .where(eq(products.id, item.id));
+
+                // ✅ ดึงจำนวนปัจจุบันหลังหัก
+                const [updated] = await dbClient
+                    .select({ quantity: products.quantity })
+                    .from(products)
+                    .where(eq(products.id, item.id));
+
+                const remaining = updated?.quantity ?? 0;
+
+                // ✅ คำนวณสถานะใหม่ (ใช้ literal type)
+                let newStatus: "active" | "low_stock" | "restock_pending" | "pricing_pending" = "active";
+                if (remaining === 0) newStatus = "restock_pending";
+                else if (remaining <= 10) newStatus = "low_stock";
+
+                // ✅ อัปเดตสถานะสินค้าใน DB
+                await dbClient
+                    .update(products)
+                    .set({ status: newStatus })
                     .where(eq(products.id, item.id));
             }
 
             res.json({ success: true, message: "บันทึกออเดอร์สำเร็จ", orderId });
         } catch (err: any) {
             console.error("❌ ERROR saving sale:", err);
-            res.status(500).json({ success: false, message: err.message || "Server error" });
+            res
+                .status(500)
+                .json({ success: false, message: err.message || "Server error" });
         }
     })
 );
+
+
 
 
 export default router;
