@@ -10,8 +10,11 @@ import {
 } from "@db/schema.js";
 import { and, or, eq, inArray, lte, sql, like, desc, asc } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import warehouseUpdatestockRouter from "./warehouse.updatestock.controller.js"
 
 const router = Router();
+
+router.use("/update", warehouseUpdatestockRouter);
 
 /* ----------------------------- helpers ----------------------------- */
 function toInt(val: unknown, def = 0) {
