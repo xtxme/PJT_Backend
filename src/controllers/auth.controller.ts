@@ -46,21 +46,30 @@ function normalizeRedirect(url: string) {
 }
 
 // GET /auth/google/callback
-// export const googleCallback: RequestHandler = async (req, res, next): Promise<void> => {
-//     try {
-//         const userEmail = (req.user as any).emails[0].value;
-//         const dbUser: any = await dbClient.query.employee.findFirst({
-//             where: eq(employee.email, userEmail),
-//         });
+export const googleCallback: RequestHandler = async (req, res, next) => {
+    try {
+        const userEmail = (req.user as any)?.emails?.[0]?.value;
+        if (!userEmail) return res.redirect(`${process.env.FRONTEND_URL}/unauthorized`);
 
-//         if (!dbUser) {
-//             res.redirect(`${process.env.FRONTEND_URL}/unauthorized`);
-//             return;
-//         }
+        const dbUser: any = await dbClient.query.employee.findFirst({
+            where: eq(employee.email, userEmail),
+        });
+        if (!dbUser) return res.redirect(`${process.env.FRONTEND_URL}/unauthorized`);
 
-//         res.redirect(buildRedirectUrl(dbUser.role));
-//         return;
-//     } catch (err) {
-//         next(err);
-//     }
-// };
+        // สร้างปลายทางตาม role
+        const redirect = normalizeRedirect(buildRedirectUrl(dbUser.role));
+
+        // ส่ง payload ผ่านหน้า bridge
+        const bridge = new URL(`${process.env.FRONTEND_URL}/auth/bridge`);
+        bridge.searchParams.set('redirect', redirect);
+        bridge.searchParams.set('id', String(dbUser.id));
+        bridge.searchParams.set('role', dbUser.role ?? '');
+        bridge.searchParams.set('username', dbUser.username ?? '');
+        bridge.searchParams.set('name', `${dbUser.fname ?? ''} ${dbUser.lname ?? ''}`.trim());
+
+        return res.redirect(bridge.toString());
+    } catch (err) {
+        next(err);
+    }
+};
+
