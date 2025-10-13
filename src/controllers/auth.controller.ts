@@ -39,21 +39,21 @@ function normalizeRedirect(url: string) {
 }
 
 // GET /auth/google/callback
-export const googleCallback: RequestHandler = async (req, res, next): Promise<void> => {
-    try {
-        const userEmail = (req.user as any).emails[0].value;
-        const dbUser: any = await dbClient.query.employee.findFirst({
-            where: eq(employee.email, userEmail),
-        });
+// export const googleCallback: RequestHandler = async (req, res, next): Promise<void> => {
+//     try {
+//         const userEmail = (req.user as any).emails[0].value;
+//         const dbUser: any = await dbClient.query.employee.findFirst({
+//             where: eq(employee.email, userEmail),
+//         });
 
-        if (!dbUser) {
-            res.redirect(`${process.env.FRONTEND_URL}/unauthorized`);
-            return;
-        }
+//         if (!dbUser) {
+//             res.redirect(`${process.env.FRONTEND_URL}/unauthorized`);
+//             return;
+//         }
 
-        res.redirect(buildRedirectUrl(dbUser.role));
-        return;
-    } catch (err) {
-        next(err);
-    }
-};
+//         res.redirect(buildRedirectUrl(dbUser.role));
+//         return;
+//     } catch (err) {
+//         next(err);
+//     }
+// };

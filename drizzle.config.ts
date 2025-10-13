@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
-import { connectionConfig } from "@db/utils.ts";
+import { connectionConfig } from "@db/utils.js";
 
 const connectionString = `mysql://${connectionConfig.user}:${connectionConfig.password}@${connectionConfig.host}:${connectionConfig.port}/${connectionConfig.database}`;
 

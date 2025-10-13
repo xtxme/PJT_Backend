@@ -110,7 +110,7 @@ export const stock_in_batches = mysqlTable(
         expected_date: datetime("expected_date"),
 
         batch_status: mysqlEnum("batch_status", [
-            "pending", "some_received", "completed", "canceled",
+            "pending", "some_received", "completed", "canceled"
         ]).notNull().default("pending"),
 
         note: text("note"),
