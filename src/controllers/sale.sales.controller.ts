@@ -103,7 +103,7 @@ router.post(
     "/",
     asyncHandler(async (req: Request, res: Response) => {
         try {
-            const { customerId, invoiceNo, totalAmount, productsInBill } = req.body;
+            const { customerId, invoiceNo, totalAmount, productsInBill, saleId } = req.body;
 
             if (!customerId || !productsInBill?.length) {
                 res.status(400).json({
@@ -118,6 +118,7 @@ router.post(
                 .values({
                     order_number: invoiceNo,
                     customer_id: Number(customerId),
+                    sale_id: Number(saleId),
                     total_amount: String(totalAmount ?? 0),
                     order_status: "completed", // 👈 ใช้ชื่อใหม่
                 })

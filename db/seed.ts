@@ -14,6 +14,8 @@ import {
     order_items,
 } from "./schema.js"; // ✅ ปรับ path ให้ตรงกับโปรเจกต์คุณ
 import { connectionConfig } from "./utils.js";
+import bcrypt from "bcrypt";
+const passwordHash = await bcrypt.hash("password123", 10);
 
 async function main() {
     const connection = await mysql.createConnection(connectionConfig);
@@ -75,8 +77,8 @@ async function main() {
     ========================= */
     console.log("🌱 Seeding employees...");
     // bcrypt hash ของคำว่า "password"
-    const passwordHash =
-        "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK";
+    // const passwordHash =
+    //     "$2b$10$CwTycUXWue0Thq9StjUM0uJ8b8bHkI4tVQ3o7S0VQd6r5fHjYF5lK";
 
     await db.insert(employee).values([
         {
