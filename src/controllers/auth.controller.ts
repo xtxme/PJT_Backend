@@ -25,8 +25,8 @@ export const login: RequestHandler = async (req, res, next): Promise<void> => {
     // สร้าง URL ให้สะอาด: กัน "//"
     const redirect = normalizeRedirect(buildRedirectUrl(dbUser.role));
 
-    // ✅ ส่ง role กลับด้วย
-    res.json({ redirect, role: dbUser.role });
+    // ✅ ส่ง role และ username กลับด้วย
+    res.json({ redirect, role: dbUser.role, username: dbUser.username });
     return;
   } catch (err) {
     next(err);
