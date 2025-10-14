@@ -133,33 +133,38 @@ async function main() {
 
     /* -------------------------- 5️⃣ Products -------------------------- */
     console.log("🌱 Seeding products...");
-    const baseProducts: [string, number, number, number][] = [
-        ["Mirrorless X100", 1, 15000, 19900],
-        ["DSLR Z500", 1, 22000, 27900],
-        ["Lens 50mm f1.8", 2, 3500, 4990],
-        ["Tripod Carbon Fiber Pro", 3, 1800, 2490],
-        ["Camera Bag Explorer", 4, 900, 1290],
-        ["Cleaning Kit 5in1", 5, 300, 490],
-        ["Telephoto Lens 70-200mm", 2, 18000, 23900],
-        ["Action Camera GoMini", 1, 8500, 11900],
-        ["LED Light Panel", 3, 1500, 2190],
-        ["Drone AirShot 4K", 1, 19000, 25900],
+
+    type ProductStatus = typeof products.product_status.enumValues[number];
+
+    // [ชื่อสินค้า, หมวดหมู่, ต้นทุน, ราคาขาย, รูปภาพ (optional)]
+    const baseProducts: [string, number, number, number, number, ProductStatus, string?][] = [
+        ["Mirrorless X100", 10, 1, 15000, 19900, "active", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391640/Fujifilm-Digital-Camera-X100-VI_ch2fyt.jpg"],
+        ["DSLR Z500", 0, 1, 22000, 27900, "low_stock", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391645/n_i_nikon-z50-1_hag7sg.jpg"],
+        ["Lens 50mm f1.8", 20, 2, 3500, 4990, "active", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391644/highres-Canon-EF-50mm-f1-8-STM-5_1433862749_fidswj.jpg"],
+        ["Tripod Carbon Fiber Pro", 15, 3, 1800, 2490, "active", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391646/SLIK_611-896_PRO_CF-635-01_1400x_ay8hvi.webp"],
+        ["Camera Bag Explorer", 5, 4, 900, 1290, "low_stock", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391644/hiking-camera-backpack-30-l-nh-explorer-900-focus-quechua-8941280_nroois.jpg"],
+        ["Cleaning Kit 5in1", 2, 5, 300, 490, "low_stock", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391636/5in1Cleaning-kit3_kcjnpm.jpg"],
+        ["Telephoto Lens 70-200mm", 4, 2, 18000, 23900, "low_stock", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760393512/Canon-70-200mm-f28-III-IS-Review-1_do0stx.jpg"],
+        ["Action Camera GoMini", 2, 1, 8500, 11900, "low_stock", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391641/HAGUE-MMC-GO-MINI-MOTION-CA__43577_psjkbk.jpg"],
+        ["LED Light Panel", 30, 3, 1500, 2190, "active", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391646/VT-100w-LED-FLOODLIGHT_hr3wyz.jpg"],
+        ["Drone AirShot 4K", 10, 1, 19000, 25900, "active", "https://res.cloudinary.com/dkft5klt4/image/upload/v1760391645/HS107GPSUnfolded1_1024x1024_leloap.webp"],
     ];
 
     const productUUIDs = baseProducts.map(() => crypto.randomUUID());
+
     await db.insert(products).values(
-        baseProducts.map(([name, cat, cost, sell], i) => ({
+        baseProducts.map(([name, qtt, cat, cost, sell, status, image], i) => ({
             id: productUUIDs[i],
             name,
             description: `${name} คุณภาพสูง เหมาะกับมือโปร`,
             category_id: cat,
             cost: cost.toString(),
             sell: sell.toString(),
-            quantity: randInt(10, 40),
+            quantity: qtt,
             counted_qty: randInt(10, 40),
-            quantity_pending: randInt(0, 5),
-            product_status: randChoice(["active", "low_stock", "restock_pending", "pricing_pending"] as const),
-            image: `/images/${name.toLowerCase().replace(/ /g, "-")}.jpg`,
+            quantity_pending: 0,
+            product_status: status ?? randChoice(["active", "low_stock", "restock_pending", "pricing_pending"] as const),
+            image: image ?? `/images/${name.toLowerCase().replace(/ /g, "-")}.jpg`,
             last_counted_at: new Date(),
             count_note: "ตรวจเช็กสต็อกประจำเดือน",
         }))
@@ -176,25 +181,13 @@ async function main() {
     }));
     await db.insert(stock_in_batches).values(stockBatches);
 
-    console.log("🌱 Seeding stock_in...");
-    const stockInData = Array.from({ length: 40 }, () => ({
-        batch_id: randInt(1, 10),
-        product_id: randChoice(productUUIDs),
-        quantity: randInt(3, 15),
-        received_qty: randInt(3, 15),
-        unit_cost: randPrice(1000, 20000),
-        supplier_id: randInt(1, 3),
-        stock_in_status: randChoice(["completed", "some_received", "pending", "canceled"] as const),
-        note: "รับสินค้าเข้าสต็อก",
-    }));
-    await db.insert(stock_in).values(stockInData);
+    /* -------------------------- 7️⃣ Orders (เฉพาะเดือนปัจจุบัน) -------------------------- */
+    console.log("🌱 Seeding orders (this month only)...");
 
-    /* -------------------------- 7️⃣ Orders (3 เดือน + inv by date) -------------------------- */
-    console.log("🌱 Seeding orders...");
-
-    const startDate = new Date("2025-07-14"); // 3 เดือนก่อน
-    const endDate = new Date("2025-10-14"); // วันนี้
-    const totalOrders = 300; // รวม 300 รายการ
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1); // วันที่ 1 ของเดือนนี้
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0); // วันสุดท้ายของเดือนนี้
+    const totalOrders = 100; // จำนวนออเดอร์ของเดือนนี้
 
     const dateGroups: Record<string, number> = {};
 

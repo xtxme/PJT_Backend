@@ -284,6 +284,7 @@ router.get("/sales/monthly-total", async (_req, res, next) => {
     const startOfNextMonth = currentRange.end;
     const startOfPreviousMonth = previousRange.start;
 
+    // 🔹 ยอดขายเดือนนี้ (เฉพาะ completed)
     const [result] = await dbClient
       .select({
         total: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
@@ -292,10 +293,12 @@ router.get("/sales/monthly-total", async (_req, res, next) => {
       .where(
         and(
           gte(orders.order_date, startOfMonth),
-          lt(orders.order_date, startOfNextMonth)
+          lt(orders.order_date, startOfNextMonth),
+          eq(orders.order_status, "completed") // ✅ เฉพาะ complete
         )
       );
 
+    // 🔹 ยอดขายเดือนที่แล้ว (เฉพาะ completed)
     const [previousResult] = await dbClient
       .select({
         total: sql<number>`COALESCE(SUM(${orders.total_amount}), 0)`,
@@ -304,12 +307,14 @@ router.get("/sales/monthly-total", async (_req, res, next) => {
       .where(
         and(
           gte(orders.order_date, startOfPreviousMonth),
-          lt(orders.order_date, startOfMonth)
+          lt(orders.order_date, startOfMonth),
+          eq(orders.order_status, "completed") // ✅ เฉพาะ complete
         )
       );
 
     const currentMonthTotal = Number(result?.total ?? 0);
     const previousMonthTotal = Number(previousResult?.total ?? 0);
+
     const percentChange =
       previousMonthTotal === 0
         ? currentMonthTotal > 0
@@ -326,6 +331,7 @@ router.get("/sales/monthly-total", async (_req, res, next) => {
     next(error);
   }
 });
+
 
 //ยอดขายรายบุคคลของพนักงาน
 router.get("/sales/by-employee", async (_req, res, next) => {
