@@ -13,7 +13,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     ports:
-      - "${MYSQL_PORT}:3306"      # ขวาต้องเป็น 3306 เสมอภายในคอนเทนเนอร์
+      - "${MYSQL_PORT:-3306}:3306"   # ถ้าไม่จำเป็นให้เปิดข้างนอก ตัดบรรทัดนี้ได้
     volumes:
       - mysql-data:/var/lib/mysql
     networks:
@@ -36,22 +36,23 @@ services:
     env_file:
       - .env
     environment:
-      # บังคับให้ backend ชี้ host เป็นชื่อ service "mysql"
-      MYSQL_HOST: mysql
-      # ให้แอปใช้พอร์ตนี้ (โค้ดอ่าน BACKEND_PORT อยู่แล้ว)
+      MYSQL_HOST: mysql             # ใช้ชื่อ service ของ MySQL
       BACKEND_PORT: ${BACKEND_PORT}
       NODE_ENV: ${NODE_ENV:-production}
       DEBUG: pf-backend
     ports:
-      - "${BACKEND_PORT}:5002"   # ซ้าย = host, ขวา = container (ต้องเป็น 5002 ให้ตรง EXPOSE/CMD)
+      - "${BACKEND_PORT:-5002}:5002"
     networks:
       - PJT-net
-    # volumes:                 # ตัดออกก่อน ถ้ายังไม่มีโฟลเดอร์ logs จริง
-    #   - ./backend/logs:/app/logs
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5002/health || exit 1"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
 
 volumes:
   mysql-data:
 
 networks:
   PJT-net:
-    driver: bridge
+    driver: bridge   # ← เปลี่ยนจาก driver: bridge เป็น external: true

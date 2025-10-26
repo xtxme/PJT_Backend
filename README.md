@@ -1,32 +1,31 @@
-# Setup
+## 🚀 ขั้นตอนการใช้งาน
 
-- `pnpm install`
-- `pnpm i express cors helmet morgan debug`
-- `pnpm i typescript @tsconfig/node-lts @tsconfig/node-ts tsx tsc-alias`
-- `pnpm i -D @types/cors @types/express @types/debug @types/morgan`
-- `pnpm i -D @types/cors @types/express @types/debug @types/morgan @types/node cross-env nodemon`
-- `pnpm i -D drizzle-kit`
-- `pnpm add drizzle-orm mysql2 dotenv`
-- `pnpm add uuid`
-- `pnpm add -D @types/uuid`
-- `docker compose up -d`
-- `npm run db:push`
-- `npm run db:seed`
-- `pnpm run dev`
+### 1️⃣ ติดตั้งเครื่องมือพื้นฐาน
+ก่อนเริ่มต้น ควรตรวจสอบว่ามีเครื่องมือเหล่านี้ในเครื่องแล้ว:
+- [Node.js 22+](https://nodejs.org/)
+- [pnpm](https://pnpm.io) (สามารถเปิดใช้งานผ่าน `corepack enable`)
+- [Docker](https://www.docker.com/) และ Docker Compose
 
+---
 
-# Setup from scratch
+### 2️⃣ ติดตั้ง Dependencies
+ติดตั้งแพ็กเกจทั้งหมดที่จำเป็นสำหรับการพัฒนา:
 
-- See https://cmu.to/fullstack68
+- pnpm install
 
-# edit package.json
+### 3️⃣ ตั้งค่า Environment Variables
+คัดลอกไฟล์ตัวอย่าง .env.example แล้วแก้ไขค่าตามเครื่องของคุณ:
 
-"scripts": {
-    "dev": "nodemon",
-    "build": "tsc && tsc-alias",
-    "start": "node ./dist/src/index.js",
-    "db:generate": "cross-env NODE_OPTIONS='--import tsx' drizzle-kit generate",
-    "db:push": "cross-env NODE_OPTIONS='--import tsx' drizzle-kit push",
-    "db:migrate": "cross-env NODE_OPTIONS='--import tsx' drizzle-kit migrate",
-    "db:prototype": "tsx ./db/prototype.ts"
-  },
+- cp .env.example .env
+
+### 4️⃣ รันระบบด้วย Docker Compose (โหมด Production)
+สร้างและรัน container ของโปรเจกต์ทั้งหมด:
+
+- docker compose up -d
+- pnpm db:push
+- pnpm db:seed
+
+### 5️⃣ รันระบบในโหมดพัฒนา (Local Development)
+ถ้าต้องการรันโดยตรงจากเครื่องแทน Docker:
+
+- npm run dev
